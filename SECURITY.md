@@ -70,6 +70,23 @@ We believe in recognizing security researchers who help us improve SentineLLM:
 
 ## 🔐 Security Best Practices for Users
 
+### ⚠️ CRITICAL: Secret Detection Baseline
+
+**IMPORTANT**: The `.secrets.baseline` file contains audited false positives (test keys, examples).
+
+**Threat Model**:
+
+- ❌ **Never exclude directories** like `tests/` or `examples/` from scanning
+- ❌ Attackers could hide real secrets in "safe" directories
+- ✅ **All files are scanned** - only specific audited secrets are allowed
+- ✅ Baseline must be reviewed in every PR that modifies it
+
+**If you see secrets detected**:
+
+1. Review if it's a REAL credential → **Never commit it**
+2. If it's a test fixture → Audit and add to baseline
+3. Rotate any leaked credentials immediately
+
 ### Deployment Security
 
 1. **Environment Variables**
