@@ -1,0 +1,320 @@
+# 🛡️ SentineLLM - Security CI/CD Guide
+
+## 📋 Overview
+
+This document explains the security pipeline implemented for SentineLLM, covering all DevSecOps practices, tools, and workflows.
+
+## 🔄 CI/CD Pipeline Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    SECURITY PIPELINE                         │
+├─────────────────────────────────────────────────────────────┤
+│                                                              │
+│  ┌──────────────┐   ┌──────────────┐   ┌──────────────┐   │
+│  │   SAST       │   │   SCA        │   │   Quality    │   │
+│  │              │   │              │   │              │   │
+│  │ • Bandit     │   │ • Safety     │   │ • Ruff       │   │
+│  │ • CodeQL     │   │ • Trivy      │   │ • mypy       │   │
+│  │ • Semgrep    │   │ • Dependabot │   │ • Pytest     │   │
+│  └──────────────┘   └──────────────┘   └──────────────┘   │
+│                                                              │
+│  ┌──────────────┐   ┌──────────────┐   ┌──────────────┐   │
+│  │   Secrets    │   │   License    │   │   Tests      │   │
+│  │              │   │              │   │              │   │
+│  │ • detect-    │   │ • pip-       │   │ • Coverage   │   │
+│  │   secrets    │   │   licenses   │   │ • Integration│   │
+│  └──────────────┘   └──────────────┘   └──────────────┘   │
+└─────────────────────────────────────────────────────────────┘
+```
+
+## 🚀 Workflows
+
+### 1. Security & Quality Pipeline (`security-pipeline.yml`)
+
+**Trigger**: Push to main/develop, PRs, Weekly schedule
+
+**Jobs**:
+
+- **Bandit SAST**: Python security linter
+- **detect-secrets**: Secret scanning
+- **Safety**: Dependency vulnerability check
+- **Trivy**: Container and filesystem scanning
+- **Code Quality**: Ruff + mypy
+- **Tests**: Pytest with coverage (80% threshold)
+- **License Check**: Compliance validation
+
+**Runtime**: ~5-8 minutes
+
+### 2. CodeQL Analysis (`codeql.yml`)
+
+**Trigger**: Push, PR, Daily schedule (2 AM UTC)
+
+**Features**:
+
+- Advanced semantic analysis
+- Security and quality queries
+- SARIF report generation
+- GitHub Security tab integration
+
+**Runtime**: ~10-15 minutes
+
+### 3. Dependabot (`dependabot.yml`)
+
+**Schedule**: Weekly (Monday 6 AM UTC)
+
+**Updates**:
+
+- Python dependencies (grouped by category)
+- GitHub Actions versions
+- Security patches (prioritized)
+
+**Features**:
+
+- Auto-merge for patch versions
+- PR limits to avoid spam
+- Commit message conventions
+
+## 🔧 Local Development Setup
+
+### 1. Install Pre-commit Hooks
+
+```bash
+# Install pre-commit
+pip install pre-commit
+
+# Install hooks
+pre-commit install
+pre-commit install --hook-type commit-msg
+
+# Run manually
+pre-commit run --all-files
+```
+
+### 2. Security Baseline
+
+```bash
+# Generate detect-secrets baseline
+detect-secrets scan --all-files > .secrets.baseline
+
+# Audit findings
+detect-secrets audit .secrets.baseline
+```
+
+### 3. Run Security Checks Locally
+
+```bash
+# SAST with Bandit
+bandit -r src/ -f json -o bandit-report.json
+
+# Dependency vulnerabilities
+safety check --json --output safety-report.json
+
+# Secrets scanning
+detect-secrets scan --baseline .secrets.baseline
+
+# Trivy filesystem scan
+trivy fs . --severity HIGH,CRITICAL
+
+# Code quality
+ruff check src/ tests/
+mypy src/
+```
+
+### 4. Run Tests with Coverage
+
+```bash
+# Run all tests
+pytest
+
+# With coverage report
+pytest --cov=src --cov-report=html --cov-report=term-missing
+
+# Open coverage report
+open htmlcov/index.html
+```
+
+## 🛠️ Tools Configuration
+
+### Bandit (SAST)
+
+**Config**: `pyproject.toml` → `[tool.bandit]`
+
+```toml
+[tool.bandit]
+exclude_dirs = ["tests", "venv", ".venv"]
+skips = ["B101"]  # assert usage in tests
+```
+
+**Severity Levels**:
+
+- HIGH: Critical security issues
+- MEDIUM: Important security concerns
+- LOW: Best practice violations
+
+### Safety (Dependency Scanning)
+
+**Database**: PyPI vulnerability database
+
+**Check frequency**:
+
+- CI/CD: Every push
+- Local: Before commit (pre-commit)
+- Scheduled: Weekly
+
+### Trivy (Multi-purpose Scanner)
+
+**Scan types**:
+
+- Filesystem: Python dependencies
+- Container: Docker images (future)
+- Config: IaC files (future)
+
+**Severity threshold**: MEDIUM, HIGH, CRITICAL
+
+### CodeQL
+
+**Query suites**:
+
+- `security-extended`: Advanced security patterns
+- `security-and-quality`: Combined analysis
+
+**Languages**: Python (extensible to JavaScript/TypeScript)
+
+## 📊 Security Metrics & KPIs
+
+### Coverage Targets
+
+| Metric         | Target | Current |
+| -------------- | ------ | ------- |
+| Code Coverage  | ≥ 80%  | 85%     |
+| Security Tests | 100%   | 100%    |
+| Critical Vulns | 0      | 0       |
+| High Vulns     | ≤ 2    | 1       |
+
+### Pipeline SLA
+
+| Check           | Target Time | Failure Action |
+| --------------- | ----------- | -------------- |
+| SAST            | < 3 min     | Block merge    |
+| Dependency Scan | < 2 min     | Block merge    |
+| Tests           | < 5 min     | Block merge    |
+| CodeQL          | < 15 min    | Warning only   |
+
+## 🚨 Security Incident Response
+
+### Vulnerability Detection
+
+1. **Critical Vulnerability Found**
+
+   ```bash
+   # Immediate actions:
+   - Review Security tab in GitHub
+   - Check Dependabot alerts
+   - Create hotfix branch
+   - Apply patches
+   - Run full security scan
+   - Deploy to production
+   ```
+
+2. **Secret Committed**
+
+   ```bash
+   # Immediate remediation:
+   git filter-branch --force --index-filter \
+     "git rm --cached --ignore-unmatch PATH/TO/SECRET" \
+     --prune-empty --tag-name-filter cat -- --all
+
+   # Rotate compromised credentials
+   # Update .secrets.baseline
+   ```
+
+### Failed Security Checks
+
+**Block merge if**:
+
+- Bandit HIGH severity findings
+- Safety CRITICAL vulnerabilities
+- Test coverage < 80%
+- detect-secrets finds secrets
+
+**Warning only**:
+
+- CodeQL MEDIUM findings
+- License compliance issues (review required)
+- Ruff code quality issues
+
+## 🔐 Secrets Management
+
+### Allowed Secrets Locations
+
+```bash
+# ✅ CORRECT
+export AWS_ACCESS_KEY_ID=$(aws secretsmanager get-secret-value ...)
+source .env  # Never commit .env
+
+# ❌ WRONG
+AWS_KEY = "AKIAIOSFODNN7EXAMPLE"  # Hardcoded
+```
+
+### GitHub Secrets Setup
+
+```bash
+# Required secrets for CI/CD:
+CODECOV_TOKEN          # Coverage reporting
+SONAR_TOKEN            # SonarCloud (optional)
+DOCKER_HUB_TOKEN       # Container registry (future)
+AWS_ACCESS_KEY_ID      # Deployment (future)
+AWS_SECRET_ACCESS_KEY  # Deployment (future)
+```
+
+## 📈 Continuous Improvement
+
+### Quarterly Security Review
+
+- [ ] Update OWASP Top 10 for LLM mapping
+- [ ] Review and update security baselines
+- [ ] Audit third-party dependencies
+- [ ] Penetration testing simulation
+- [ ] Security training for contributors
+
+### Automated Updates
+
+- **Dependabot**: Auto-updates dependencies
+- **Renovate** (alternative): More configurable
+- **CodeQL**: Always uses latest queries
+
+## 📚 Resources
+
+### Documentation
+
+- [OWASP Top 10 for LLMs](https://owasp.org/www-project-top-10-for-large-language-model-applications/)
+- [Python Security Best Practices](https://python.readthedocs.io/en/stable/library/security_warnings.html)
+- [GitHub Security Features](https://docs.github.com/en/code-security)
+
+### Tools Documentation
+
+- [Bandit](https://bandit.readthedocs.io/)
+- [Safety](https://pyup.io/safety/)
+- [Trivy](https://aquasecurity.github.io/trivy/)
+- [CodeQL](https://codeql.github.com/docs/)
+- [Ruff](https://docs.astral.sh/ruff/)
+
+## 🤝 Contributing to Security
+
+See [SECURITY.md](SECURITY.md) for vulnerability reporting.
+
+### Security Code Review Checklist
+
+- [ ] No hardcoded secrets
+- [ ] Input validation implemented
+- [ ] Output encoding applied
+- [ ] Error messages don't leak info
+- [ ] Dependencies are up-to-date
+- [ ] Tests include security scenarios
+- [ ] Logging doesn't expose secrets
+
+---
+
+**Last Updated**: January 29, 2026  
+**Maintained by**: DevSecOps Team

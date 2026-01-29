@@ -1,0 +1,98 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "description": "Renovate configuration for SentineLLM (Alternative to Dependabot)",
+  "extends": [
+    "config:recommended",
+    ":dependencyDashboard",
+    ":semanticCommits",
+    ":separateMajorReleases",
+    "group:allNonMajor",
+    "helpers:pinGitHubActionDigests"
+  ],
+  "timezone": "Europe/Madrid",
+  "schedule": ["before 6am on Monday"],
+  "prConcurrentLimit": 10,
+  "prHourlyLimit": 5,
+  "labels": ["dependencies", "automated"],
+  "assignees": ["Allesterdev"],
+  "reviewers": ["Allesterdev"],
+  "commitMessagePrefix": "⬆️",
+  "commitMessageAction": "upgrade",
+  "commitMessageTopic": "{{depName}}",
+  "commitMessageExtra": "to {{newVersion}}",
+  "rangeStrategy": "bump",
+  "semanticCommits": "enabled",
+  "vulnerabilityAlerts": {
+    "enabled": true,
+    "labels": ["security", "critical"],
+    "assignees": ["Allesterdev"],
+    "automerge": false
+  },
+  "packageRules": [
+    {
+      "description": "Security updates - high priority",
+      "matchUpdateTypes": ["patch", "pin", "digest"],
+      "matchPackagePatterns": ["bandit", "safety", "detect-secrets", "trivy"],
+      "automerge": true,
+      "automergeType": "pr",
+      "labels": ["security", "automerge"],
+      "schedule": ["at any time"]
+    },
+    {
+      "description": "Testing dependencies",
+      "matchPackagePatterns": ["pytest", "hypothesis", "coverage"],
+      "groupName": "testing dependencies",
+      "automerge": true,
+      "matchUpdateTypes": ["patch", "minor"]
+    },
+    {
+      "description": "FastAPI ecosystem",
+      "matchPackageNames": [
+        "fastapi",
+        "uvicorn",
+        "pydantic",
+        "pydantic-settings",
+        "httpx"
+      ],
+      "groupName": "fastapi ecosystem",
+      "automerge": false,
+      "reviewers": ["Allesterdev"]
+    },
+    {
+      "description": "Development tools",
+      "matchPackagePatterns": ["ruff", "mypy", "pre-commit", "ipython"],
+      "groupName": "development tools",
+      "automerge": true,
+      "matchUpdateTypes": ["patch", "minor"]
+    },
+    {
+      "description": "GitHub Actions",
+      "matchManagers": ["github-actions"],
+      "groupName": "github actions",
+      "automerge": true,
+      "matchUpdateTypes": ["patch", "minor"],
+      "pinDigests": true
+    },
+    {
+      "description": "Major updates - require manual review",
+      "matchUpdateTypes": ["major"],
+      "automerge": false,
+      "labels": ["dependencies", "major-update"],
+      "reviewers": ["Allesterdev"]
+    }
+  ],
+  "python": {
+    "enabled": true
+  },
+  "pip_requirements": {
+    "fileMatch": ["^requirements.*\\.txt$"]
+  },
+  "pip_setup": {
+    "fileMatch": ["^setup\\.py$", "^pyproject\\.toml$"]
+  },
+  "lockFileMaintenance": {
+    "enabled": true,
+    "schedule": ["before 6am on the first day of the month"]
+  },
+  "suppressNotifications": ["prIgnoreNotification"]
+}
