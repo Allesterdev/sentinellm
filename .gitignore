@@ -33,6 +33,7 @@ env/
 *.swo
 *~
 .DS_Store
+.history/
 
 # Testing
 .pytest_cache/
