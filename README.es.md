@@ -1,5 +1,7 @@
 # 🛡️ SentineLLM
 
+> [🇬🇧 English](README.md) | 🇪🇸 **Español**
+
 **AI Security Gateway** - Middleware de seguridad para proteger aplicaciones LLM contra prompt injections y fuga de secretos.
 
 [![Python](https://img.shields.io/badge/Python-3.10%2B-blue)](https://www.python.org/)

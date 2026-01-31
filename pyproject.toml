@@ -51,6 +51,7 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**/*.py" = ["S101", "S105", "S106"]
+"src/utils/constants.py" = ["S105"]  # Enum identifiers are not real secrets
 
 [tool.mypy]
 python_version = "3.10"
@@ -83,7 +84,7 @@ addopts = [
 
 [tool.bandit]
 exclude_dirs = ["tests", "venv", ".venv"]
-skips = ["B101"]
+skips = ["B101", "B105"]  # B101: assert in tests, B105: false positives on enum identifiers
 
 [tool.coverage.run]
 source = ["src"]

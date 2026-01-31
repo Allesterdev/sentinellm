@@ -2,8 +2,6 @@
 Tests unitarios para validator.py
 """
 
-import pytest
-
 from src.core.validator import (
     luhn_check,
     validate_aws_key,
@@ -90,27 +88,19 @@ class TestValidateGitHubToken:
 
     def test_valid_ghp_token(self):
         """Test: Personal access token válido"""
-        assert validate_github_token(
-            "ghp_1234567890abcdefghijklmnopqrstuvwxyzABCD") is True
+        assert validate_github_token("ghp_1234567890abcdefghijklmnopqrstuvwxyzABCD") is True
 
     def test_valid_gho_token(self):
         """Test: OAuth token válido"""
-        assert (
-            validate_github_token(
-                "gho_1234567890abcdefghijklmnopqrstuvwxyzABCD") is True
-        )
+        assert validate_github_token("gho_1234567890abcdefghijklmnopqrstuvwxyzABCD") is True
 
     def test_valid_ghs_token(self):
         """Test: Server token válido"""
-        assert (
-            validate_github_token(
-                "ghs_1234567890abcdefghijklmnopqrstuvwxyzABCD") is True
-        )
+        assert validate_github_token("ghs_1234567890abcdefghijklmnopqrstuvwxyzABCD") is True
 
     def test_invalid_prefix(self):
         """Test: Prefijo inválido debe fallar"""
-        assert validate_github_token(
-            "invalid_1234567890abcdefghijklmnopqr") is False
+        assert validate_github_token("invalid_1234567890abcdefghijklmnopqr") is False
 
     def test_too_short(self):
         """Test: Token muy corto debe fallar"""
@@ -122,11 +112,7 @@ class TestValidateGitHubToken:
 
     def test_special_characters_allowed(self):
         """Test: Underscores están permitidos en el token"""
-        assert (
-            validate_github_token(
-                "ghp_1234567890abcdefghijk_lmnopqrstuvwxyzABCD")
-            is True
-        )
+        assert validate_github_token("ghp_1234567890abcdefghijk_lmnopqrstuvwxyzABCD") is True
 
 
 class TestValidateJWT:

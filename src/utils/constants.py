@@ -4,7 +4,7 @@ Constants and detection patterns for SentineLLM
 
 import re
 from enum import Enum
-from typing import Pattern
+from re import Pattern
 
 # =============================================================================
 # ENUMERATIONS
@@ -25,13 +25,14 @@ class SecretType(str, Enum):
     """Detectable secret types"""
 
     AWS_ACCESS_KEY = "aws_access_key"
+    # nosec B105 - enum identifier, not a real secret
     AWS_SECRET_KEY = "aws_secret_key"
-    GITHUB_TOKEN = "github_token"
-    BEARER_TOKEN = "bearer_token"
+    GITHUB_TOKEN = "github_token"  # nosec B105 - enum identifier, not a real secret
+    BEARER_TOKEN = "bearer_token"  # nosec B105 - enum identifier, not a real secret
     CREDIT_CARD = "credit_card"
-    GENERIC_API_KEY = "generic_api_key"
-    PRIVATE_KEY = "private_key"
-    JWT_TOKEN = "jwt_token"
+    GENERIC_API_KEY = "generic_api_key"  # nosec B105 - enum identifier
+    PRIVATE_KEY = "private_key"  # nosec B105 - enum identifier
+    JWT_TOKEN = "jwt_token"  # nosec B105 - enum identifier
 
 
 # =============================================================================
@@ -44,19 +45,14 @@ AWS_ACCESS_KEY_PATTERN: Pattern = re.compile(
 )
 
 AWS_SECRET_KEY_PATTERN: Pattern = re.compile(
-    r"(?i)aws[_\-\s]?secret[_\-\s]?(?:access[_\-\s]?)?key['\"\s:=]*([a-z0-9/+=]{40})",
-    re.IGNORECASE,
+    r"(?i)aws[_\-\s]?secret[_\-\s]?(?:access[_\-\s]?)?key['\"\s:=]*([a-z0-9/+=]{40})"
 )
 
 # GitHub Tokens
-GITHUB_TOKEN_PATTERN: Pattern = re.compile(
-    r"(?i)gh[p|o|u|s|r]_[a-zA-Z0-9]{36,255}", re.IGNORECASE
-)
+GITHUB_TOKEN_PATTERN: Pattern = re.compile(r"(?i)gh[p|o|u|s|r]_[a-zA-Z0-9]{36,255}")
 
 # Bearer Tokens
-BEARER_TOKEN_PATTERN: Pattern = re.compile(
-    r"(?i)bearer\s+([a-zA-Z0-9\-._~+/]+=*)", re.IGNORECASE
-)
+BEARER_TOKEN_PATTERN: Pattern = re.compile(r"(?i)bearer\s+([a-zA-Z0-9\-._~+/]+=*)")
 
 # JWT Tokens
 JWT_PATTERN: Pattern = re.compile(
@@ -65,8 +61,7 @@ JWT_PATTERN: Pattern = re.compile(
 
 # Generic API Keys
 GENERIC_API_KEY_PATTERN: Pattern = re.compile(
-    r"(?i)(?:api[_\-\s]?key|apikey|access[_\-\s]?token)['\"\s:=]+([a-z0-9]{32,})",
-    re.IGNORECASE,
+    r"(?i)(?:api[_\-\s]?key|apikey|access[_\-\s]?token)['\"\s:=]+([a-z0-9]{32,})"
 )
 
 # Private Keys (PEM)

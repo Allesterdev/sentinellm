@@ -2,8 +2,6 @@
 Tests unitarios para el módulo detector.py
 """
 
-import pytest
-
 from src.core.detector import DetectionResult, SecretDetector
 from src.utils.constants import SecretType, ThreatLevel
 
@@ -20,8 +18,7 @@ class TestSecretDetector:
 
     def test_detector_custom_params(self):
         """Test: Inicialización con parámetros personalizados"""
-        detector = SecretDetector(
-            entropy_threshold=5.0, min_length=20, max_length=256)
+        detector = SecretDetector(entropy_threshold=5.0, min_length=20, max_length=256)
         assert detector.entropy_threshold == 5.0
         assert detector.min_length == 20
         assert detector.max_length == 256
@@ -45,8 +42,7 @@ class TestSecretDetector:
         aws_result = results[0]
         assert aws_result.found is True
         assert aws_result.secret_type == SecretType.AWS_ACCESS_KEY
-        assert aws_result.threat_level in (
-            ThreatLevel.HIGH, ThreatLevel.CRITICAL)
+        assert aws_result.threat_level in (ThreatLevel.HIGH, ThreatLevel.CRITICAL)
         assert sample_aws_key in aws_result.matched_text
 
     def test_detect_github_token(self, detector, sample_github_token):

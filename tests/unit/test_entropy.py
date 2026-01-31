@@ -2,8 +2,6 @@
 Tests unitarios para entropy.py
 """
 
-import pytest
-
 from src.core.entropy import (
     analyze_entropy_distribution,
     calculate_entropy,

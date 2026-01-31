@@ -9,7 +9,6 @@ This module implements the main detector that combines:
 
 import re
 from dataclasses import dataclass, field
-from typing import Optional
 
 from ..utils.constants import (
     DEFAULT_ENTROPY_THRESHOLD,
@@ -42,7 +41,7 @@ class DetectionResult:
 
     found: bool = False
     threat_level: ThreatLevel = ThreatLevel.NONE
-    secret_type: Optional[SecretType] = None
+    secret_type: SecretType | None = None
     matched_text: str = ""
     position: tuple[int, int] = (0, 0)
     entropy: float = 0.0
@@ -89,7 +88,7 @@ class SecretDetector:
         entropy_threshold: float = DEFAULT_ENTROPY_THRESHOLD,
         min_length: int = MIN_SECRET_LENGTH,
         max_length: int = MAX_SECRET_LENGTH,
-    ):
+    ) -> None:
         """
         Initialize the detector.
 
@@ -98,9 +97,9 @@ class SecretDetector:
             min_length: Minimum length of secrets
             max_length: Maximum length of secrets
         """
-        self.entropy_threshold = entropy_threshold
-        self.min_length = min_length
-        self.max_length = max_length
+        self.entropy_threshold: float = entropy_threshold
+        self.min_length: int = min_length
+        self.max_length: int = max_length
 
     def scan(self, text: str) -> list[DetectionResult]:
         """
@@ -176,39 +175,42 @@ class SecretDetector:
         Returns:
             DetectionResult with complete analysis
         """
-        entropy = calculate_entropy(text)
+        entropy: float = calculate_entropy(text)
         confidence = 0.5  # Base confidence for regex match
 
         # Specific validation according to type
         is_valid = False
         if secret_type == SecretType.AWS_ACCESS_KEY:
-            is_valid = validate_aws_key(text)
-            confidence = 0.95 if is_valid else 0.7
+            is_valid: bool = validate_aws_key(text)
+            confidence: float = 0.95 if is_valid else 0.7
 
         elif secret_type == SecretType.GITHUB_TOKEN:
-            is_valid = validate_github_token(text)
-            confidence = 0.9 if is_valid else 0.7
+            is_valid: bool = validate_github_token(text)
+            confidence: float = 0.9 if is_valid else 0.7
 
         elif secret_type == SecretType.CREDIT_CARD:
             # Extract only digits
             digits = "".join(c for c in text if c.isdigit())
-            is_valid = luhn_check(digits)
-            confidence = 0.95 if is_valid else 0.5
+            is_valid: bool = luhn_check(digits)
+            confidence: float = 0.95 if is_valid else 0.5
 
         elif secret_type == SecretType.JWT_TOKEN:
-            is_valid = validate_jwt(text)
-            confidence = 0.85 if is_valid else 0.6
+            is_valid: bool = validate_jwt(text)
+            confidence: float = 0.85 if is_valid else 0.6
+
+        # Check suspicious context once (avoid calling 3 times)
+        has_suspicious_context: bool = self._has_suspicious_context(full_text, position)
 
         # Determine threat level
-        threat_level = self._calculate_threat_level(
+        threat_level: ThreatLevel = self._calculate_threat_level(
             secret_type=secret_type,
             is_valid=is_valid,
             entropy=entropy,
-            has_context=self._has_suspicious_context(full_text, position),
+            has_context=has_suspicious_context,
         )
 
         # Increase confidence if there's suspicious context
-        if self._has_suspicious_context(full_text, position):
+        if has_suspicious_context:
             confidence = min(confidence + 0.1, 1.0)
 
         return DetectionResult(
@@ -221,9 +223,7 @@ class SecretDetector:
             confidence=round(confidence, 2),
             context={
                 "is_valid": is_valid,
-                "has_suspicious_keywords": self._has_suspicious_context(
-                    full_text, position
-                ),
+                "has_suspicious_keywords": has_suspicious_context,
             },
         )
 
@@ -277,9 +277,9 @@ class SecretDetector:
         """
         start, end = position
         # Context of 50 characters before and after
-        context_start = max(0, start - 50)
-        context_end = min(len(text), end + 50)
-        context = text[context_start:context_end].lower()
+        context_start: int = max(0, start - 50)
+        context_end: int = min(len(text), end + 50)
+        context: str = text[context_start:context_end].lower()
 
         return any(keyword in context for keyword in SUSPICIOUS_KEYWORDS)
 
@@ -311,9 +311,7 @@ class SecretDetector:
 
         return high_entropy_matches
 
-    def _is_duplicate(
-        self, entropy_match: dict, existing_results: list[DetectionResult]
-    ) -> bool:
+    def _is_duplicate(self, entropy_match: dict, existing_results: list[DetectionResult]) -> bool:
         """
         Check if an entropy match was already detected by regex.
 
@@ -329,9 +327,7 @@ class SecretDetector:
             start1, end1 = entropy_match["position"]
             start2, end2 = result.position
 
-            if (start1 >= start2 and start1 < end2) or (
-                start2 >= start1 and start2 < end1
-            ):
+            if (start1 >= start2 and start1 < end2) or (start2 >= start1 and start2 < end1):
                 return True
 
         return False

@@ -32,11 +32,11 @@ def luhn_check(card_number: str) -> bool:
     def digits_of(n: str) -> list[int]:
         return [int(d) for d in n]
 
-    digits = digits_of(card_number)
-    odd_digits = digits[-1::-2]
-    even_digits = digits[-2::-2]
+    digits: list[int] = digits_of(card_number)
+    odd_digits: list[int] = digits[-1::-2]
+    even_digits: list[int] = digits[-2::-2]
 
-    checksum = sum(odd_digits)
+    checksum: int = sum(odd_digits)
     for digit in even_digits:
         checksum += sum(digits_of(str(digit * 2)))
 
@@ -74,7 +74,7 @@ def validate_aws_key(key: str) -> bool:
         return False
 
     # Must be alphanumeric and all uppercase (the rest after prefix)
-    rest = key[4:]
+    rest: str = key[4:]
     return rest.isalnum() and all(c.isupper() or c.isdigit() for c in rest)
 
 
@@ -134,7 +134,7 @@ def validate_jwt(token: str) -> bool:
     if not token:
         return False
 
-    parts = token.split(".")
+    parts: list[str] = token.split(".")
     if len(parts) != 3:
         return False
 

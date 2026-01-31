@@ -1,5 +1,6 @@
-```markdown
 # 🛡️ SentineLLM
+
+> 🇬🇧 **English** | [🇪🇸 Español](README.es.md)
 
 **AI Security Gateway** — Security middleware to protect LLM applications from prompt injections and secret leakage.
 
@@ -22,6 +23,7 @@ SentineLLM is a **security middleware** that intercepts traffic between users an
 - **Secret Leakage & DLP** (output) — Prevents leaking credentials, API keys and sensitive data
 
 ### Defense-in-Depth Architecture
+
 ```
 
 User → InputFilter → OllamaFilter → [LLM] → OutputFilter → DLPFilter → Response
@@ -30,7 +32,7 @@ User → InputFilter → OllamaFilter → [LLM] → OutputFilter → DLPFilter �
 └─ Luhn Check │ └─ Credit Cards
 └─ ML Semantic Detection
 
-````
+```
 
 ---
 
@@ -63,7 +65,7 @@ pytest
 
 # Start the server (future)
 # uvicorn src.main:app --reload
-````
+```
 
 ---
 

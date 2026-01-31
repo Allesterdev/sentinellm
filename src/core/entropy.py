@@ -33,13 +33,13 @@ def calculate_entropy(text: str) -> float:
         return 0.0
 
     # Count frequency of each character
-    char_counts = Counter(text)
-    text_length = len(text)
+    char_counts: Counter[str] = Counter(text)
+    text_length: int = len(text)
 
     # Calculate probabilities and entropy
-    entropy = 0.0
+    entropy: float = 0.0
     for count in char_counts.values():
-        probability = count / text_length
+        probability: float = count / text_length
         if probability > 0:
             entropy -= probability * math.log2(probability)
 
@@ -70,7 +70,7 @@ def is_high_entropy(
     if not (min_length <= len(text) <= max_length):
         return False
 
-    entropy = calculate_entropy(text)
+    entropy: float = calculate_entropy(text)
     return entropy >= threshold
 
 
@@ -98,10 +98,10 @@ def analyze_entropy_distribution(text: str) -> dict[str, float]:
             "special_ratio": 0.0,
         }
 
-    total_chars = len(text)
-    uppercase_count = sum(1 for c in text if c.isupper())
-    digit_count = sum(1 for c in text if c.isdigit())
-    special_count = sum(1 for c in text if not c.isalnum())
+    total_chars: int = len(text)
+    uppercase_count: int = sum(1 for c in text if c.isupper())
+    digit_count: int = sum(1 for c in text if c.isdigit())
+    special_count: int = sum(1 for c in text if not c.isalnum())
 
     return {
         "entropy": calculate_entropy(text),
