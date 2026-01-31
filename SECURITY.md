@@ -20,7 +20,7 @@ We actively maintain and provide security updates for the following versions:
 ### Responsible Disclosure Process
 
 1. **Private Reporting** (Recommended)
-   - Use GitHub's [Security Advisories](https://github.com/Allesterdev/sentinellm/security/advisories/new)
+   - Use GitHub's [@Allesterdev](https://github.com/Allesterdev)
    - This ensures the vulnerability is handled privately until a fix is available
 
 2. **Email Reporting**
@@ -193,8 +193,6 @@ We track and monitor CVEs related to:
 
 ## 📧 Contact
 
-- **Security Issues**: security@sentinellm.dev
-- **General Inquiries**: hello@sentinellm.dev
 - **GitHub**: [@Allesterdev](https://github.com/Allesterdev)
 - **LinkedIn**: [Oscar C.B.](https://www.linkedin.com/in/oscar-campoy-ballester-sec)
 
@@ -212,5 +210,5 @@ We thank the security research community for their continuous efforts in making 
 
 ---
 
-**Last Updated**: January 29, 2026  
+**Last Updated**: January 29, 2026
 **Version**: 1.0

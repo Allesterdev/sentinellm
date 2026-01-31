@@ -122,16 +122,96 @@ SUSPICIOUS_KEYWORDS: list[str] = [
 ]
 
 # =============================================================================
-# PROMPT INJECTION PATTERNS (basic, will be complemented with Ollama)
+# PROMPT INJECTION PATTERNS (multilingual, will be complemented with Ollama)
 # =============================================================================
 
 PROMPT_INJECTION_PATTERNS: list[Pattern] = [
+    # ===== ENGLISH =====
+    # Instruction override attempts
     re.compile(r"ignore\s+(?:all\s+)?previous\s+instructions?", re.IGNORECASE),
     re.compile(r"disregard\s+(?:all\s+)?previous\s+instructions?", re.IGNORECASE),
     re.compile(r"forget\s+(?:all\s+)?previous\s+instructions?", re.IGNORECASE),
-    re.compile(r"you\s+are\s+now\s+(?:a|an)\s+", re.IGNORECASE),
-    re.compile(r"act\s+as\s+(?:a|an)\s+", re.IGNORECASE),
+    re.compile(r"override\s+(?:previous\s+)?instructions?", re.IGNORECASE),
+    # Role manipulation
+    re.compile(r"you\s+are\s+now\s+", re.IGNORECASE),
+    re.compile(r"act\s+as\s+(?:a|an)?\s*", re.IGNORECASE),
     re.compile(r"pretend\s+(?:to\s+be|you\s+are)", re.IGNORECASE),
+    re.compile(r"roleplay\s+as", re.IGNORECASE),
+    # Jailbreak attempts
+    re.compile(
+        r"\b(?:DAN|STAN|DUDE)\b.*(?:without|no|sin)\s+(?:restrictions?|rules?|limits?)",
+        re.IGNORECASE,
+    ),
+    re.compile(r"(?:without|no)\s+(?:restrictions?|rules?|limits?|ethical|moral)", re.IGNORECASE),
+    re.compile(r"jailbreak", re.IGNORECASE),
+    # ===== SPANISH / ESPAÑOL =====
+    # Intentos de sobreescribir instrucciones
+    re.compile(
+        r"ignora\s+(?:todas?\s+)?(?:las?\s+)?instrucciones?\s+(?:anteriores?|previas?)",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"olvida\s+(?:todas?\s+)?(?:las?\s+)?instrucciones?\s+(?:anteriores?|previas?)",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"descarta\s+(?:todas?\s+)?(?:las?\s+)?instrucciones?\s+(?:anteriores?|previas?)",
+        re.IGNORECASE,
+    ),
+    # Manipulación de rol
+    re.compile(r"(?:ahora|ya)\s+eres\s+", re.IGNORECASE),
+    re.compile(r"act[uú]a\s+como\s+(?:un|una)?\s*", re.IGNORECASE),
+    re.compile(r"finge\s+(?:que\s+eres|ser)", re.IGNORECASE),
+    re.compile(r"simula\s+(?:que\s+eres|ser)", re.IGNORECASE),
+    # Jailbreak
+    re.compile(r"sin\s+(?:restricciones?|reglas?|l[ií]mites?|[ée]tica|moral)", re.IGNORECASE),
+    # ===== PORTUGUESE / PORTUGUÊS =====
+    # Tentativas de sobrescrever instruções
+    re.compile(
+        r"ignore?\s+(?:todas?\s+)?(?:as?\s+)?instru[çc][õo]es?\s+(?:anteriores?|pr[ée]vias?)",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"esque[çc]a\s+(?:todas?\s+)?(?:as?\s+)?instru[çc][õo]es?\s+(?:anteriores?|pr[ée]vias?)",
+        re.IGNORECASE,
+    ),
+    # Manipulação de papel
+    re.compile(r"(?:agora|j[aá])\s+(?:[eé]s?|voc[eê]\s+[eé])\s+", re.IGNORECASE),
+    re.compile(r"atue?\s+como\s+(?:um|uma)?\s*", re.IGNORECASE),
+    re.compile(r"finja\s+(?:que\s+[eé]|ser)", re.IGNORECASE),
+    # Jailbreak
+    re.compile(r"sem\s+(?:restri[çc][õo]es?|regras?|limites?|[ée]tica|moral)", re.IGNORECASE),
+    # ===== FRENCH / FRANÇAIS =====
+    # Tentatives de remplacer les instructions
+    re.compile(
+        r"ignore[rz]?\s+(?:toutes?\s+)?(?:les?\s+)?instructions?\s+(?:pr[ée]c[ée]dentes?|ant[ée]rieures?)",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"oublie[rz]?\s+(?:toutes?\s+)?(?:les?\s+)?instructions?\s+(?:pr[ée]c[ée]dentes?|ant[ée]rieures?)",
+        re.IGNORECASE,
+    ),
+    # Manipulation de rôle
+    re.compile(r"(?:maintenant|d[ée]sormais)\s+(?:tu\s+es|vous\s+[êe]tes)\s+", re.IGNORECASE),
+    re.compile(r"agis\s+comme\s+(?:un|une)?\s*", re.IGNORECASE),
+    re.compile(r"fais\s+semblant\s+(?:d'[êe]tre|que\s+tu\s+es)", re.IGNORECASE),
+    # Jailbreak
+    re.compile(r"sans\s+(?:restrictions?|r[èe]gles?|limites?|[ée]thique|morale)", re.IGNORECASE),
+    # ===== GERMAN / DEUTSCH =====
+    # Versuche, Anweisungen zu überschreiben
+    re.compile(
+        r"ignoriere?\s+(?:alle\s+)?(?:vorherigen?|fr[üu]heren?)\s+Anweisungen?", re.IGNORECASE
+    ),
+    re.compile(r"vergiss\s+(?:alle\s+)?(?:vorherigen?|fr[üu]heren?)\s+Anweisungen?", re.IGNORECASE),
+    # Rollenmanipulation
+    re.compile(r"(?:jetzt|nun)\s+bist\s+du\s+", re.IGNORECASE),
+    re.compile(r"verhalte\s+dich\s+wie\s+(?:ein|eine)?\s*", re.IGNORECASE),
+    re.compile(r"tu\s+so\s+als\s+(?:ob|w[äa]rst)\s+", re.IGNORECASE),
+    # Jailbreak
+    re.compile(r"ohne\s+(?:Einschr[äa]nkungen?|Regeln?|Grenzen?|Ethik|Moral)", re.IGNORECASE),
+    # ===== SYSTEM TOKENS (language-independent) =====
     re.compile(r"system\s*:\s*", re.IGNORECASE),
     re.compile(r"<\s*\|im_start\|\s*>", re.IGNORECASE),
+    re.compile(r"<\s*system\s*>", re.IGNORECASE),
+    re.compile(r"<\s*\|system\|\s*>", re.IGNORECASE),
 ]

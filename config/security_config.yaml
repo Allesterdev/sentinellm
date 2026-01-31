@@ -1,0 +1,27 @@
+prompt_injection:
+  enabled: true
+  layers:
+    regex:
+      enabled: true
+      threat_threshold: medium
+    llm:
+      enabled: true
+secret_detection:
+  enabled: true
+  patterns:
+  - aws
+  - github
+  - jwt
+  - generic
+ollama:
+  mode: local
+  local:
+    host: localhost
+    port: 11434
+    timeout: 30
+  model: mistral:7b
+  circuit_breaker:
+    failure_threshold: 3
+    recovery_timeout: 60
+  fallback:
+    mode: regex_only

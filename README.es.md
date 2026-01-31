@@ -40,6 +40,7 @@ Usuario → InputFilter → OllamaFilter → [LLM] → OutputFilter → DLPFilte
 
 - Python 3.10+
 - Linux (openSUSE Tumbleweed, Ubuntu, etc.)
+- (Opcional) [Ollama](https://ollama.com/) para detección semántica profunda
 
 ### Instalación
 
@@ -54,15 +55,54 @@ source venv/bin/activate
 
 # Instalar dependencias
 pip install -r requirements.txt
+```
 
-# Configurar variables de entorno
-cp .env.example .env
+### 🎉 Configuración Interactiva
 
+SentineLLM incluye un CLI interactivo para configuración fácil:
+
+```bash
+# Ejecutar el wizard de configuración
+python sentinellm.py
+
+# O usar comandos específicos
+python sentinellm.py setup          # Configuración inicial
+python sentinellm.py config         # Cambiar configuración
+python sentinellm.py demo           # Ejecutar demo interactivo
+python sentinellm.py check-ollama   # Ver estado de Ollama
+```
+
+El wizard te guía a través de:
+
+- 🌍 **Selección de idioma** (English/Español)
+- 🔧 **Capas de detección** (Regex, LLM)
+- 🤖 **Configuración de Ollama** (Local, VPC, Externo)
+- ⚙️ **Circuit breaker & fallback** settings
+- 🔐 **Detección de secretos** patrones
+
+### 🎮 Demo Interactivo
+
+Prueba los filtros de seguridad con escenarios predefinidos:
+
+```bash
+python examples/interactive_demo.py
+```
+
+El demo simula:
+
+- ✅ Prompts seguros
+- 🚨 Ataques de prompt injection (DAN, system override)
+- 🔑 Fugas de secretos (claves AWS, tokens GitHub, tarjetas)
+- 🔴 Ataques combinados
+
+### Ejecutar Tests
+
+```bash
 # Ejecutar tests
 pytest
 
-# Iniciar el servidor (futuro)
-# uvicorn src.main:app --reload
+# Con cobertura
+pytest --cov=src
 ```
 
 ---
@@ -73,12 +113,16 @@ pytest
 sentinellm/
 ├── src/
 │   ├── core/          # Motor de detección (Regex, Entropía, Validadores)
-│   ├── filters/       # Filtros de entrada/salida
-│   ├── middleware/    # FastAPI middleware
-│   ├── models/        # Modelos Pydantic
-│   └── api/           # Endpoints REST
+│   ├── filters/       # Detección de prompt injection y LLM
+│   ├── cli/           # CLI interactivo y wizard de configuración
+│   ├── utils/         # Constantes, cargador de config, helpers
+│   ├── middleware/    # FastAPI middleware (futuro)
+│   ├── models/        # Modelos Pydantic (futuro)
+│   └── api/           # Endpoints REST (futuro)
+├── examples/          # Demos interactivos
 ├── tests/             # Tests unitarios e integración
-├── config/            # Configuración por entorno
+├── config/            # Configuraciones YAML
+├── sentinellm.py      # Punto de entrada CLI principal
 └── docs/              # Documentación técnica
 ```
 
@@ -86,14 +130,31 @@ sentinellm/
 
 ## 🔍 Detección Implementada
 
+### Detección de Secretos
+
 | Tipo                   | Método           | Estado |
 | ---------------------- | ---------------- | ------ |
 | AWS Access Keys (AKIA) | Regex + Checksum | ✅     |
 | AWS Secret Keys        | Regex + Entropía | ✅     |
 | GitHub Tokens          | Regex            | ✅     |
 | Bearer Tokens          | Regex            | ✅     |
+| JWT Tokens             | Regex            | ✅     |
 | Tarjetas de Crédito    | Luhn Algorithm   | ✅     |
-| Prompt Injection ML    | Ollama           | 🔄     |
+| Claves Privadas (PEM)  | Regex            | ✅     |
+
+### Detección de Prompt Injection
+
+| Capa  | Método             | Idiomas            | Patrones | Estado |
+| ----- | ------------------ | ------------------ | -------- | ------ |
+| Regex | Pattern matching   | 5 (EN/ES/PT/FR/DE) | 41       | ✅     |
+| LLM   | Análisis semántico | Cualquiera         | N/A      | ✅     |
+
+**Protección Multilingüe**: Detecta ataques en inglés, español, portugués, francés y alemán
+
+- 🇬🇧 Sobreescritura de instrucciones (ignore, disregard, forget)
+- 🇯🇵 Manipulación de rol (actúa como, ahora eres, finge)
+- 🔴 Intentos de jailbreak (DAN, STAN, sin restricciones)
+- ⚙️ Inyección de tokens de sistema (<system>, |im_start|)
 
 ---
 
@@ -146,10 +207,15 @@ Consulta la [Guía de CI/CD de Seguridad](docs/security-cicd.md) para documentac
 
 - [x] Estructura del proyecto
 - [x] Detección de secretos por Regex
-- [x] Validador Luhn
+- [x] Validador Luhn para tarjetas de crédito
 - [x] Cálculo de entropía Shannon
+- [x] **CLI interactivo con wizard de configuración**
+- [x] **Detección multilingüe de prompt injection (5 idiomas)**
+- [x] **Integración con Ollama para análisis semántico**
+- [x] **Demo interactivo con escenarios de prueba**
+- [x] **Soporte bilingüe (EN/ES)**
+- [x] **Circuit breaker y estrategias de fallback**
 - [ ] API REST con FastAPI
-- [ ] Integración con Ollama
 - [ ] Middleware de logging
 - [ ] Dashboard Grafana
 - [ ] Deployment en AWS
@@ -177,9 +243,12 @@ Distribuido bajo la licencia MIT. Ver `LICENSE` para más información.
 
 ## 📫 Contacto
 
-Tu Nombre - [@yourtwitter](https://twitter.com/yourtwitter)
+Oscar Campoy Ballester
 
-Proyecto: [https://github.com/yourusername/sentinellm](https://github.com/yourusername/sentinellm)
+- 💼 LinkedIn: [oscar-campoy-ballester-sec](https://www.linkedin.com/in/oscar-campoy-ballester-sec)
+- 📧 Email: oscarcampoy.dev@gmail.com
+
+Proyecto: [https://github.com/Allesterdev/sentinellm](https://github.com/Allesterdev/sentinellm)
 
 ---
 

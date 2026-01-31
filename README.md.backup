@@ -1,6 +1,5 @@
+```markdown
 # 🛡️ SentineLLM
-
-> 🇬🇧 **English** | [🇪🇸 Español](README.es.md)
 
 **AI Security Gateway** — Security middleware to protect LLM applications from prompt injections and secret leakage.
 
@@ -23,7 +22,6 @@ SentineLLM is a **security middleware** that intercepts traffic between users an
 - **Secret Leakage & DLP** (output) — Prevents leaking credentials, API keys and sensitive data
 
 ### Defense-in-Depth Architecture
-
 ```
 
 User → InputFilter → OllamaFilter → [LLM] → OutputFilter → DLPFilter → Response
@@ -32,7 +30,7 @@ User → InputFilter → OllamaFilter → [LLM] → OutputFilter → DLPFilter �
 └─ Luhn Check │ └─ Credit Cards
 └─ ML Semantic Detection
 
-```
+````
 
 ---
 
@@ -42,7 +40,6 @@ User → InputFilter → OllamaFilter → [LLM] → OutputFilter → DLPFilter �
 
 - Python 3.10+
 - Linux (openSUSE Tumbleweed, Ubuntu, etc.)
-- (Optional) [Ollama](https://ollama.com/) for deep semantic detection
 
 ### Installation
 
@@ -57,55 +54,16 @@ source venv/bin/activate
 
 # Install dependencies
 pip install -r requirements.txt
-```
 
-### 🎉 Interactive Setup
+# Copy environment variables example
+cp .env.example .env
 
-SentineLLM includes an interactive CLI for easy configuration:
-
-```bash
-# Run the interactive setup wizard
-python sentinellm.py
-
-# Or use specific commands
-python sentinellm.py setup          # Initial configuration
-python sentinellm.py config         # Change configuration
-python sentinellm.py demo           # Run interactive demo
-python sentinellm.py check-ollama   # Check Ollama status
-```
-
-The wizard guides you through:
-
-- 🌍 **Language selection** (English/Español)
-- 🔧 **Detection layers** (Regex, LLM)
-- 🤖 **Ollama configuration** (Local, VPC, External)
-- ⚙️ **Circuit breaker & fallback** settings
-- 🔐 **Secret detection** patterns
-
-### 🎮 Interactive Demo
-
-Test the security filters with predefined scenarios:
-
-```bash
-python examples/interactive_demo.py
-```
-
-The demo simulates:
-
-- ✅ Safe prompts
-- 🚨 Prompt injection attacks (DAN, system override)
-- 🔑 Secret leaks (AWS keys, GitHub tokens, credit cards)
-- 🔴 Combined attacks
-
-### Running Tests
-
-```bash
 # Run tests
 pytest
 
-# With coverage
-pytest --cov=src
-```
+# Start the server (future)
+# uvicorn src.main:app --reload
+````
 
 ---
 
@@ -115,16 +73,12 @@ pytest --cov=src
 sentinellm/
 ├── src/
 │   ├── core/          # Detection engine (Regex, Entropy, Validators)
-│   ├── filters/       # Prompt injection & LLM detection
-│   ├── cli/           # Interactive CLI & configuration wizard
-│   ├── utils/         # Constants, config loader, helpers
-│   ├── middleware/    # FastAPI middleware (future)
-│   ├── models/        # Pydantic models (future)
-│   └── api/           # REST endpoints (future)
-├── examples/          # Interactive demos
+│   ├── filters/       # Input/output filters
+│   ├── middleware/    # FastAPI middleware
+│   ├── models/        # Pydantic models
+│   └── api/           # REST endpoints
 ├── tests/             # Unit and integration tests
-├── config/            # YAML configurations
-├── sentinellm.py      # Main CLI entry point
+├── config/            # Environment configurations
 └── docs/              # Technical documentation
 ```
 
@@ -132,31 +86,14 @@ sentinellm/
 
 ## 🔍 Implemented Detections
 
-### Secret Detection
-
 | Type                   | Method           | Status |
 | ---------------------- | ---------------- | ------ |
 | AWS Access Keys (AKIA) | Regex + Checksum | ✅     |
 | AWS Secret Keys        | Regex + Entropy  | ✅     |
 | GitHub Tokens          | Regex            | ✅     |
 | Bearer Tokens          | Regex            | ✅     |
-| JWT Tokens             | Regex            | ✅     |
 | Credit Cards           | Luhn Algorithm   | ✅     |
-| Private Keys (PEM)     | Regex            | ✅     |
-
-### Prompt Injection Detection
-
-| Layer | Method            | Languages          | Patterns | Status |
-| ----- | ----------------- | ------------------ | -------- | ------ |
-| Regex | Pattern matching  | 5 (EN/ES/PT/FR/DE) | 41       | ✅     |
-| LLM   | Semantic analysis | Any                | N/A      | ✅     |
-
-**Multilingual Protection**: Detects attacks in English, Spanish, Portuguese, French, and German
-
-- 🇬🇧 Instruction override (ignore, disregard, forget)
-- 🇯🇵 Role manipulation (act as, you are now, pretend)
-- 🔴 Jailbreak attempts (DAN, STAN, without restrictions)
-- ⚙️ System token injection (<system>, |im_start|)
+| Prompt Injection ML    | Ollama           | 🔄     |
 
 ---
 
@@ -209,15 +146,10 @@ See [Security CI/CD Guide](docs/security-cicd.md) for detailed documentation.
 
 - [x] Project structure
 - [x] Secret detection via Regex
-- [x] Luhn validator for credit cards
+- [x] Luhn validator
 - [x] Shannon entropy calculation
-- [x] **Interactive CLI with configuration wizard**
-- [x] **Multilingual prompt injection detection (5 languages)**
-- [x] **Ollama integration for semantic analysis**
-- [x] **Interactive demo with test scenarios**
-- [x] **Bilingual support (EN/ES)**
-- [x] **Circuit breaker & fallback strategies**
 - [ ] REST API with FastAPI
+- [ ] Ollama integration
 - [ ] Logging middleware
 - [ ] Grafana dashboard
 - [ ] Deployment to AWS
@@ -245,12 +177,9 @@ Distributed under the MIT License. See `LICENSE` for more information.
 
 ## 📫 Contact
 
-Oscar Campoy Ballester
+Your Name - [@yourtwitter](https://twitter.com/yourtwitter)
 
-- 💼 LinkedIn: [oscar-campoy-ballester-sec](https://www.linkedin.com/in/oscar-campoy-ballester-sec)
-- 📧 Email: oscarcampoy.dev@gmail.com
-
-Project: [https://github.com/Allesterdev/sentinellm](https://github.com/Allesterdev/sentinellm)
+Project: [https://github.com/yourusername/sentinellm](https://github.com/yourusername/sentinellm)
 
 ---
 
