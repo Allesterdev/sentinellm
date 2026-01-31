@@ -183,12 +183,20 @@ class SecurityConfig:
 
         # Ollama config
         ollama_data = data.get("ollama", {})
+
+        # Handle model - can be either a string or a dict
+        model_data = ollama_data.get("model", {})
+        if isinstance(model_data, str):
+            model_config = OllamaModelConfig(name=model_data)
+        else:
+            model_config = OllamaModelConfig(**model_data)
+
         ollama = OllamaConfig(
             mode=ollama_data.get("mode", "local"),
             local=OllamaLocalConfig(**ollama_data.get("local", {})),
             vpc=OllamaVPCConfig(**ollama_data.get("vpc", {})),
             external=OllamaExternalConfig(**ollama_data.get("external", {})),
-            model=OllamaModelConfig(**ollama_data.get("model", {})),
+            model=model_config,
             health_check=OllamaHealthCheckConfig(**ollama_data.get("health_check", {})),
             circuit_breaker=OllamaCircuitBreakerConfig(**ollama_data.get("circuit_breaker", {})),
             fallback=OllamaFallbackConfig(**ollama_data.get("fallback", {})),

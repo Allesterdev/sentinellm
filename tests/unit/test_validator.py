@@ -165,3 +165,18 @@ class TestEdgeCases:
         """Test: JWT con partes vacías"""
         assert validate_jwt("..") is False
         assert validate_jwt("eyJhbGc..signature") is False
+
+    def test_aws_key_with_lowercase_fails(self):
+        """Test: AWS key con minúsculas falla (línea 74)"""
+        lowercase_key = "AKIAiosfodnn7example"  # Tiene minúsculas
+        assert validate_aws_key(lowercase_key) is False
+
+    def test_github_token_alphanumeric_check(self):
+        """Test: GitHub token validación alfanumérica (línea 109)"""
+        # Token válido con alfanuméricos (40 caracteres)
+        valid_token = "ghp_1234567890abcdefghijklmnopqrstuv1234"  # pragma: allowlist secret
+        assert validate_github_token(valid_token) is True
+
+        # Token con caracteres especiales (no válido)
+        invalid_token = "ghp_abc#123defghijklmnopqrstuvwxyz123456"
+        assert validate_github_token(invalid_token) is False

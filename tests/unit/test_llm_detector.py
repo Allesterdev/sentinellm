@@ -373,3 +373,74 @@ class TestLLMDetectionResult:
         assert result.confidence == 0.9
         assert result.model_used == "mistral:7b"
         assert result.latency_ms == 150.5
+
+
+class TestOllamaDetectorExtended:
+    """Extended tests for Ollama detector edge cases."""
+
+    @patch("httpx.Client.get")
+    def test_health_check_success(self, mock_get, test_config):
+        """Test: Health check exitoso"""
+        test_config.health_check.enabled = True
+
+        mock_response = Mock()
+        mock_response.json.return_value = {"models": []}
+        mock_response.raise_for_status = Mock()
+        mock_get.return_value = mock_response
+
+        detector = OllamaDetector(test_config)
+        result = detector._perform_health_check()
+
+        assert result is True
+        assert detector.is_healthy is True
+
+    @patch("httpx.Client.get")
+    def test_health_check_failure(self, mock_get, test_config):
+        """Test: Health check fallido"""
+        test_config.health_check.enabled = True
+        mock_get.side_effect = Exception("Connection failed")
+
+        detector = OllamaDetector(test_config)
+        result = detector._perform_health_check()
+
+        assert result is False
+        assert detector.is_healthy is False
+
+    def test_circuit_breaker_half_open_state(self, test_config):
+        """Test: Circuit breaker en estado HALF_OPEN"""
+        detector = OllamaDetector(test_config)
+        if detector.circuit_breaker:
+            detector.circuit_breaker.state = CircuitState.HALF_OPEN
+            detector.circuit_breaker.half_open_calls = 0
+
+            assert detector.circuit_breaker.can_attempt() is True
+
+    def test_endpoint_configuration_vpc(self, test_config):
+        """Test: Configuración de endpoint VPC"""
+        test_config.mode = "vpc"
+        test_config.vpc.instances = ["http://ollama1:11434", "http://ollama2:11434"]
+
+        detector = OllamaDetector(test_config)
+        endpoint = detector._get_endpoint()
+
+        assert endpoint in test_config.vpc.instances
+
+    def test_threat_level_mapping_low(self, test_config):
+        """Test: Mapeo de confianza baja a LOW"""
+        detector = OllamaDetector(test_config)
+        assert detector._confidence_to_threat_level(0.3, True) == ThreatLevel.LOW
+
+    def test_threat_level_mapping_medium(self, test_config):
+        """Test: Mapeo de confianza media a MEDIUM"""
+        detector = OllamaDetector(test_config)
+        assert detector._confidence_to_threat_level(0.75, True) == ThreatLevel.MEDIUM
+
+    def test_threat_level_mapping_high(self, test_config):
+        """Test: Mapeo de confianza alta a HIGH"""
+        detector = OllamaDetector(test_config)
+        assert detector._confidence_to_threat_level(0.95, True) == ThreatLevel.HIGH
+
+    def test_threat_level_no_injection(self, test_config):
+        """Test: No injection retorna NONE"""
+        detector = OllamaDetector(test_config)
+        assert detector._confidence_to_threat_level(0.95, False) == ThreatLevel.NONE

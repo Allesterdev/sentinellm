@@ -248,12 +248,13 @@ jobs:
         run: |
           COVERAGE=$(pytest --cov=src --cov-report=term-missing | grep TOTAL | awk '{print $4}' | sed 's/%//')
           echo "Current coverage: ${COVERAGE}%"
-          # Temporary threshold at 50% - TODO: increase to 80% after adding tests for CLI/wizard
-          if (( $(echo "$COVERAGE < 50" | bc -l) )); then
-            echo "⚠️  Coverage is below 50% threshold"
+          # Focus on critical code coverage (detectors, validators, core logic)
+          # CLI/wizard modules are tested manually
+          if (( $(echo "$COVERAGE < 70" | bc -l) )); then
+            echo "⚠️  Coverage is below 70% threshold"
             exit 1
           fi
-          echo "✅ Coverage meets 50% threshold (target: 80%)"
+          echo "✅ Coverage meets 70% threshold"
 
   # ═══════════════════════════════════════════════════════════════════
   # License Compliance Check
