@@ -126,7 +126,7 @@ class PromptInjectionConfig:
     """Prompt injection detection configuration"""
 
     enabled: bool = True
-    layers: list[dict[str, Any]] = field(default_factory=list)
+    layers: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass

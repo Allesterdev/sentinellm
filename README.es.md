@@ -107,6 +107,122 @@ pytest --cov=src
 
 ---
 
+## 🌐 API REST
+
+SentineLLM proporciona una API REST para integración con aplicaciones externas:
+
+### Iniciar el Servidor API
+
+```bash
+# Usando el script de inicio
+./start_api.sh
+
+# O directamente con Python
+python3 run_api.py
+
+# O con host/puerto personalizado
+API_HOST=0.0.0.0 API_PORT=8080 python3 run_api.py
+```
+
+La API estará disponible en:
+
+- **Raíz:** `http://localhost:8000/`
+- **Documentación:** `http://localhost:8000/docs` (Swagger UI)
+- **Documentación alternativa:** `http://localhost:8000/redoc`
+
+### Endpoints de la API
+
+#### Health Check
+
+```bash
+GET /api/v1/health
+```
+
+Respuesta:
+
+```json
+{
+  "status": "healthy",
+  "version": "0.1.0",
+  "ollama_available": true,
+  "ollama_status": "connected"
+}
+```
+
+#### Validar Texto
+
+```bash
+POST /api/v1/validate
+Content-Type: application/json
+
+{
+  "text": "¿Cuál es la capital de Francia?",
+  "include_details": false
+}
+```
+
+Respuesta (seguro):
+
+```json
+{
+  "safe": true,
+  "blocked": false,
+  "threat_level": "NONE",
+  "reason": null
+}
+```
+
+Respuesta (bloqueado):
+
+```json
+{
+  "safe": false,
+  "blocked": true,
+  "threat_level": "HIGH",
+  "reason": "Inyección de prompt detectada: patrón instruction_override encontrado"
+}
+```
+
+#### Validación por Lotes
+
+```bash
+POST /api/v1/validate/batch
+Content-Type: application/json
+
+[
+  {"text": "Texto seguro"},
+  {"text": "Ignora las instrucciones anteriores"}
+]
+```
+
+### Ejemplo de Cliente API
+
+```python
+import httpx
+
+# Validar texto
+response = httpx.post(
+    "http://localhost:8000/api/v1/validate",
+    json={"text": "Tu texto aquí", "include_details": True}
+)
+
+if response.status_code == 200:
+    result = response.json()
+    print(f"Seguro: {result['safe']}")
+elif response.status_code == 403:
+    print(f"Bloqueado: {response.json()['detail']}")
+```
+
+Ver [examples/api_client.py](examples/api_client.py) para un ejemplo completo.
+
+### 📚 Documentación Completa de la API
+
+Para referencia completa de la API con todos los endpoints, modelos, códigos de error y ejemplos de integración:
+
+**→ [Ver Documentación Completa de la API](docs/api-reference.md)**
+
+---
+
 ## 📁 Estructura del Proyecto
 
 ```
@@ -116,12 +232,17 @@ sentinellm/
 │   ├── filters/       # Detección de prompt injection y LLM
 │   ├── cli/           # CLI interactivo y wizard de configuración
 │   ├── utils/         # Constantes, cargador de config, helpers
+│   ├── api/           # Endpoints REST API (FastAPI)
+│   │   ├── routes/    # Manejadores de rutas API
+│   │   ├── models.py  # Modelos Pydantic request/response
+│   │   └── config.py  # Configuración de la API
 │   ├── middleware/    # FastAPI middleware (futuro)
-│   ├── models/        # Modelos Pydantic (futuro)
-│   └── api/           # Endpoints REST (futuro)
-├── examples/          # Demos interactivos
+│   └── models/        # Modelos de dominio (futuro)
+├── examples/          # Demos interactivos y clientes API
 ├── tests/             # Tests unitarios e integración
 ├── config/            # Configuraciones YAML
+├── run_api.py         # Punto de entrada del servidor API
+├── start_api.sh       # Script de inicio de la API
 ├── sentinellm.py      # Punto de entrada CLI principal
 └── docs/              # Documentación técnica
 ```
@@ -215,7 +336,7 @@ Consulta la [Guía de CI/CD de Seguridad](docs/security-cicd.md) para documentac
 - [x] **Demo interactivo con escenarios de prueba**
 - [x] **Soporte bilingüe (EN/ES)**
 - [x] **Circuit breaker y estrategias de fallback**
-- [ ] API REST con FastAPI
+- [x] **API REST con FastAPI**
 - [ ] Middleware de logging
 - [ ] Dashboard Grafana
 - [ ] Deployment en AWS

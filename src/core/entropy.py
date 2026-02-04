@@ -4,6 +4,21 @@ Shannon entropy calculation for secret detection
 
 import math
 from collections import Counter
+from dataclasses import dataclass
+
+
+@dataclass
+class EntropyResult:
+    """
+    Result of entropy analysis.
+
+    Attributes:
+        entropy: Shannon entropy value
+        anomaly_detected: Whether an anomaly was detected
+    """
+
+    entropy: float = 0.0
+    anomaly_detected: bool = False
 
 
 def calculate_entropy(text: str) -> float:

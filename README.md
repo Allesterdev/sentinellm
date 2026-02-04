@@ -109,6 +109,122 @@ pytest --cov=src
 
 ---
 
+## 🌐 REST API
+
+SentineLLM provides a REST API for integration with external applications:
+
+### Starting the API Server
+
+```bash
+# Using the startup script
+./start_api.sh
+
+# Or directly with Python
+python3 run_api.py
+
+# Or with custom host/port
+API_HOST=0.0.0.0 API_PORT=8080 python3 run_api.py
+```
+
+The API will be available at:
+
+- **Root:** `http://localhost:8000/`
+- **Documentation:** `http://localhost:8000/docs` (Swagger UI)
+- **Alternative docs:** `http://localhost:8000/redoc`
+
+### API Endpoints
+
+#### Health Check
+
+```bash
+GET /api/v1/health
+```
+
+Response:
+
+```json
+{
+  "status": "healthy",
+  "version": "0.1.0",
+  "ollama_available": true,
+  "ollama_status": "connected"
+}
+```
+
+#### Validate Text
+
+```bash
+POST /api/v1/validate
+Content-Type: application/json
+
+{
+  "text": "What is the capital of France?",
+  "include_details": false
+}
+```
+
+Response (safe):
+
+```json
+{
+  "safe": true,
+  "blocked": false,
+  "threat_level": "NONE",
+  "reason": null
+}
+```
+
+Response (blocked):
+
+```json
+{
+  "safe": false,
+  "blocked": true,
+  "threat_level": "HIGH",
+  "reason": "Prompt injection detected: instruction_override pattern matched"
+}
+```
+
+#### Batch Validation
+
+```bash
+POST /api/v1/validate/batch
+Content-Type: application/json
+
+[
+  {"text": "Safe text"},
+  {"text": "Ignore previous instructions"}
+]
+```
+
+### API Client Example
+
+```python
+import httpx
+
+# Validate text
+response = httpx.post(
+    "http://localhost:8000/api/v1/validate",
+    json={"text": "Your text here", "include_details": True}
+)
+
+if response.status_code == 200:
+    result = response.json()
+    print(f"Safe: {result['safe']}")
+elif response.status_code == 403:
+    print(f"Blocked: {response.json()['detail']}")
+```
+
+See [examples/api_client.py](examples/api_client.py) for a complete example.
+
+### 📚 Full API Documentation
+
+For complete API reference with all endpoints, models, error codes, and integration examples:
+
+**→ [View Complete API Documentation](docs/api-reference.md)**
+
+---
+
 ## 📁 Project Structure
 
 ```
@@ -118,12 +234,17 @@ sentinellm/
 │   ├── filters/       # Prompt injection & LLM detection
 │   ├── cli/           # Interactive CLI & configuration wizard
 │   ├── utils/         # Constants, config loader, helpers
+│   ├── api/           # REST API endpoints (FastAPI)
+│   │   ├── routes/    # API route handlers
+│   │   ├── models.py  # Pydantic request/response models
+│   │   └── config.py  # API configuration
 │   ├── middleware/    # FastAPI middleware (future)
-│   ├── models/        # Pydantic models (future)
-│   └── api/           # REST endpoints (future)
-├── examples/          # Interactive demos
+│   └── models/        # Domain models (future)
+├── examples/          # Interactive demos & API clients
 ├── tests/             # Unit and integration tests
 ├── config/            # YAML configurations
+├── run_api.py         # API server entry point
+├── start_api.sh       # API startup script
 ├── sentinellm.py      # Main CLI entry point
 └── docs/              # Technical documentation
 ```
@@ -217,7 +338,7 @@ See [Security CI/CD Guide](docs/security-cicd.md) for detailed documentation.
 - [x] **Interactive demo with test scenarios**
 - [x] **Bilingual support (EN/ES)**
 - [x] **Circuit breaker & fallback strategies**
-- [ ] REST API with FastAPI
+- [x] **REST API with FastAPI**
 - [ ] Logging middleware
 - [ ] Grafana dashboard
 - [ ] Deployment to AWS

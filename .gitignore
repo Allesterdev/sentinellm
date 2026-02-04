@@ -47,6 +47,12 @@ htmlcov/
 .env.local
 .env.*.local
 
+# Personal notes and planning
+ROADMAP.md
+NOTES.md
+TODO.md
+PRIVATE_NOTES.md
+
 # Logs
 *.log
 logs/
@@ -59,3 +65,7 @@ secrets/
 # OS
 Thumbs.db
 # Test comment
+.html
+.png
+.jpeg
+*.pdf

@@ -19,3 +19,6 @@ pre-commit>=3.6.0
 # Development
 ipython>=8.20.0
 rich>=13.7.0
+
+# API Client Examples (optional)
+tenacity>=8.2.0  # For retry logic in advanced_api_client.py

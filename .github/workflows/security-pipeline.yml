@@ -239,7 +239,7 @@ jobs:
         uses: codecov/codecov-action@v5
         if: matrix.python-version == '3.10'
         with:
-          file: ./coverage.xml
+          files: ./coverage.xml
           flags: unittests
           name: codecov-sentinellm
           fail_ci_if_error: false

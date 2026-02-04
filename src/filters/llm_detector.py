@@ -382,6 +382,15 @@ class OllamaDetector:
             self.last_health_check = datetime.now()
             return False
 
+    def health_check(self) -> bool:
+        """
+        Public method to check Ollama service health.
+
+        Returns:
+            True if healthy, False otherwise
+        """
+        return self._perform_health_check()
+
     def _handle_fallback(self, text: str, reason: str) -> LLMDetectionResult:
         """
         Handle fallback when Ollama is unavailable.
