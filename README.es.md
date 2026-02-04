@@ -11,7 +11,6 @@
 
 [![Security Pipeline](https://github.com/Allesterdev/sentinellm/actions/workflows/security-pipeline.yml/badge.svg)](https://github.com/Allesterdev/sentinellm/actions/workflows/security-pipeline.yml)
 [![CodeQL](https://github.com/Allesterdev/sentinellm/actions/workflows/codeql.yml/badge.svg)](https://github.com/Allesterdev/sentinellm/actions/workflows/codeql.yml)
-[![codecov](https://codecov.io/gh/Allesterdev/sentinellm/branch/main/graph/badge.svg)](https://codecov.io/gh/Allesterdev/sentinellm)
 
 ---
 
