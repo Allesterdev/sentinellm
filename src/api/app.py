@@ -29,6 +29,17 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
+    # Root endpoint
+    @app.get("/", tags=["Root"])
+    async def root():
+        """API root endpoint with basic information."""
+        return {
+            "name": "SentineLLM API",
+            "version": "0.1.0",
+            "docs": "/docs",
+            "health": "/api/v1/health",
+        }
+
     # Register routes
     app.include_router(health.router, prefix="/api/v1", tags=["Health"])
     app.include_router(validation.router, prefix="/api/v1", tags=["Validation"])
