@@ -220,6 +220,39 @@ Para referencia completa de la API con todos los endpoints, modelos, códigos de
 
 **→ [Ver Documentación Completa de la API](docs/api-reference.md)**
 
+### 🔌 Plugin de OpenClaw
+
+Plugin de TypeScript para integración perfecta con agentes AI de OpenClaw:
+
+```bash
+cd plugins/openclaw
+npm install
+npm run build
+```
+
+**Uso:**
+
+```typescript
+import { createSentineLLMPlugin } from "@sentinellm/openclaw-plugin";
+
+const security = createSentineLLMPlugin({
+  apiUrl: "http://localhost:8000",
+  blockOnError: true,
+});
+
+// Integrar con agente OpenClaw
+const agent = new Agent({
+  plugins: [
+    {
+      onInboundMessage: (msg) => security.onInboundMessage(msg),
+      onOutboundMessage: (msg) => security.onOutboundMessage(msg),
+    },
+  ],
+});
+```
+
+**→ [Documentación del Plugin OpenClaw](plugins/openclaw/README.md)**
+
 ---
 
 ## 📁 Estructura del Proyecto
@@ -237,6 +270,8 @@ sentinellm/
 │   │   └── config.py  # Configuración de la API
 │   ├── middleware/    # FastAPI middleware (futuro)
 │   └── models/        # Modelos de dominio (futuro)
+├── plugins/           # Plugins de integración
+│   └── openclaw/      # Plugin TypeScript para OpenClaw
 ├── examples/          # Demos interactivos y clientes API
 ├── tests/             # Tests unitarios e integración
 ├── config/            # Configuraciones YAML
@@ -288,7 +323,10 @@ SentineLLM implementa un pipeline completo de seguridad:
 - **Escaneo de Secretos**: detect-secrets + GitHub Secret Scanning
 - **Escaneo de Dependencias**: Safety + Trivy para vulnerabilidades
 - **Calidad de Código**: Ruff (linting) + mypy (type checking)
-- **Cobertura**: Umbral mínimo del 80% obligatorio
+- **Cobertura**:
+  - Actual: **70%** (Python core + API)
+  - Objetivo: **80%** (roadmap Q1 2026)
+  - Mínimo obligatorio: **70%** en CI/CD
 - **Cumplimiento de Licencias**: Verificación automática de licencias
 
 ### Workflows CI/CD
