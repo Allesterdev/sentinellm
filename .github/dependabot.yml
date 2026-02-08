@@ -15,10 +15,6 @@ updates:
       - "Allesterdev"
     assignees:
       - "Allesterdev"
-    labels:
-      - "dependencies"
-      - "security"
-      - "python"
     commit-message:
       prefix: "⬆️"
       include: "scope"
@@ -89,9 +85,6 @@ updates:
     open-pull-requests-limit: 5
     reviewers:
       - "Allesterdev"
-    labels:
-      - "dependencies"
-      - "github-actions"
     commit-message:
       prefix: "🔧"
       include: "scope"
