@@ -60,9 +60,14 @@ pip install -r requirements.txt
 
 ### 🎉 Interactive Setup
 
+**Prerequisites:** Complete the installation steps above (virtual environment + dependencies)
+
 SentineLLM includes an interactive CLI for easy configuration:
 
 ```bash
+# Ensure you're in the virtual environment
+source venv/bin/activate
+
 # Run the interactive setup wizard
 python sentinellm.py
 

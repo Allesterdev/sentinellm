@@ -228,39 +228,45 @@ def run_setup():
     if nodejs_status["node_installed"] and nodejs_status["npm_installed"]:
         print(f"  ✓ Node.js {nodejs_status['version']}")
         print("  ✓ npm está instalado")
-
-        if questionary.confirm(
-            t("install_openclaw_plugin_prompt"),
-            default=False,
-            style=CUSTOM_STYLE,
-        ).ask():
-            install_openclaw_plugin()
     else:
         print(f"  ℹ️  {t('nodejs_not_found')}")
-        print(f"     {t('nodejs_needed_for_plugin')}")
 
-        if questionary.confirm(
-            t("see_nodejs_install_guide"), default=False, style=CUSTOM_STYLE
-        ).ask():
-            print("\n" + "=" * 70)
-            print("📦 Node.js Installation Guide")
-            print("=" * 70)
-            print("\n🔗 Download from: https://nodejs.org/")
-            print("\n   Recommended: LTS (Long Term Support) version")
-            if sys.platform.startswith("linux"):
-                print("\n   Linux (using package manager):")
-                print("   • Ubuntu/Debian: sudo apt install nodejs npm")
-                print("   • Fedora: sudo dnf install nodejs npm")
-                print("   • Arch: sudo pacman -S nodejs npm")
-            elif sys.platform == "darwin":
-                print("\n   macOS:")
-                print("   • brew install node")
-                print("   • Or download installer from nodejs.org")
-            elif sys.platform == "win32":
-                print("\n   Windows:")
-                print("   • Download installer from nodejs.org")
-                print("   • Or use: winget install OpenJS.NodeJS.LTS")
-            print("\n" + "=" * 70)
+    # Always ask about OpenClaw plugin installation
+    if questionary.confirm(
+        t("install_openclaw_plugin_prompt"),
+        default=False,
+        style=CUSTOM_STYLE,
+    ).ask():
+        if nodejs_status["node_installed"] and nodejs_status["npm_installed"]:
+            # Node.js is available, proceed with installation
+            install_openclaw_plugin()
+        else:
+            # Node.js not available, show installation guide first
+            print(f"\n⚠️  {t('nodejs_needed_for_plugin')}")
+            if questionary.confirm(
+                t("see_nodejs_install_guide"), default=True, style=CUSTOM_STYLE
+            ).ask():
+                print("\n" + "=" * 70)
+                print("📦 Node.js Installation Guide")
+                print("=" * 70)
+                print("\n🔗 Download from: https://nodejs.org/")
+                print("\n   Recommended: LTS (Long Term Support) version")
+                if sys.platform.startswith("linux"):
+                    print("\n   Linux (using package manager):")
+                    print("   • Ubuntu/Debian: sudo apt install nodejs npm")
+                    print("   • Fedora: sudo dnf install nodejs npm")
+                    print("   • Arch: sudo pacman -S nodejs npm")
+                elif sys.platform == "darwin":
+                    print("\n   macOS:")
+                    print("   • brew install node")
+                    print("   • Or download installer from nodejs.org")
+                elif sys.platform == "win32":
+                    print("\n   Windows:")
+                    print("   • Download installer from nodejs.org")
+                    print("   • Or use: winget install OpenJS.NodeJS.LTS")
+                print("\n" + "=" * 70)
+                print("\n💡 After installing Node.js, run: python sentinellm.py setup")
+                print("   Or manually install: cd plugins/openclaw && npm install")
 
     # Create config directory
     config_dir = Path("config")
