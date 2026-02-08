@@ -45,7 +45,7 @@ Usuario → InputFilter → OllamaFilter → [LLM] → OutputFilter → DLPFilte
 
 ```bash
 # Clonar el repositorio
-git clone https://github.com/yourusername/sentinellm.git
+git clone https://github.com/Allesterdev/sentinellm.git
 cd sentinellm
 
 # Crear entorno virtual
