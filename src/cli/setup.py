@@ -99,7 +99,8 @@ def install_openclaw_plugin() -> bool:
 
         print(f"\n✓ {t('plugin_installed')}")
         print(f"\n📦 {t('plugin_usage')}")
-        print("   npm install @sentinellm/openclaw-plugin")
+        print("   cd your-openclaw-project")
+        print("   npm install ../SentineLLM/plugins/openclaw")
         return True
     except subprocess.CalledProcessError as e:
         print(f"\n❌ {t('plugin_install_error')}: {e}")

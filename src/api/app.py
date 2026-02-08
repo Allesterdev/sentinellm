@@ -45,3 +45,7 @@ def create_app() -> FastAPI:
     app.include_router(validation.router, prefix="/api/v1", tags=["Validation"])
 
     return app
+
+
+# Create app instance for uvicorn
+app = create_app()
