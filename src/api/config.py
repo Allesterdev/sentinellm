@@ -11,8 +11,9 @@ class Settings(BaseSettings):
 
     model_config = ConfigDict(env_file=".env", env_file_encoding="utf-8")
 
-    # API Configuration
-    API_HOST: str = "0.0.0.0"  # nosec B104 # noqa: S104 - Required for Docker
+    # API Configuration (secure defaults)
+    # Localhost only by default (use 0.0.0.0 for Docker/network)
+    API_HOST: str = "127.0.0.1"
     API_PORT: int = 8000
     API_WORKERS: int = 4
 

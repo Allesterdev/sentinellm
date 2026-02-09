@@ -50,63 +50,6 @@ def check_ollama_installation() -> dict[str, bool | list[str]]:
     return {"installed": installed, "running": running, "models": models}
 
 
-def check_nodejs_installation() -> dict[str, bool | str]:
-    """Check Node.js and npm installation."""
-    node_installed = shutil.which("node") is not None
-    npm_installed = shutil.which("npm") is not None
-    node_version = ""
-
-    if node_installed:
-        try:
-            result = subprocess.run(
-                ["node", "--version"],
-                capture_output=True,
-                text=True,
-                timeout=3,
-                check=False,
-            )
-            if result.returncode == 0:
-                node_version = result.stdout.strip()
-        except (subprocess.TimeoutExpired, FileNotFoundError):
-            pass
-
-    return {
-        "node_installed": node_installed,
-        "npm_installed": npm_installed,
-        "version": node_version,
-    }
-
-
-def install_openclaw_plugin() -> bool:
-    """Install OpenClaw plugin."""
-    plugin_dir = Path("plugins/openclaw")
-
-    if not plugin_dir.exists():
-        print(f"❌ {t('plugin_dir_not_found')}")
-        return False
-
-    print(f"\n📦 {t('installing_plugin')}")
-    print(f"   cd {plugin_dir}")
-
-    try:
-        # Install dependencies
-        print("\n   npm install...")
-        subprocess.run(["npm", "install"], cwd=plugin_dir, check=True)
-
-        # Build plugin
-        print("   npm run build...")
-        subprocess.run(["npm", "run", "build"], cwd=plugin_dir, check=True)
-
-        print(f"\n✓ {t('plugin_installed')}")
-        print(f"\n📦 {t('plugin_usage')}")
-        print("   cd your-openclaw-project")
-        print("   npm install ../SentineLLM/plugins/openclaw")
-        return True
-    except subprocess.CalledProcessError as e:
-        print(f"\n❌ {t('plugin_install_error')}: {e}")
-        return False
-
-
 def install_ollama_guide():
     """Show Ollama installation guide."""
     print("\n" + "=" * 70)
@@ -222,53 +165,6 @@ def run_setup():
         ).ask():
             install_ollama_guide()
 
-    # Check Node.js for OpenClaw plugin (optional)
-    print(f"\n{t('checking_nodejs')}")
-    nodejs_status = check_nodejs_installation()
-
-    if nodejs_status["node_installed"] and nodejs_status["npm_installed"]:
-        print(f"  ✓ Node.js {nodejs_status['version']}")
-        print("  ✓ npm está instalado")
-    else:
-        print(f"  ℹ️  {t('nodejs_not_found')}")
-
-    # Always ask about OpenClaw plugin installation
-    if questionary.confirm(
-        t("install_openclaw_plugin_prompt"),
-        default=False,
-        style=CUSTOM_STYLE,
-    ).ask():
-        if nodejs_status["node_installed"] and nodejs_status["npm_installed"]:
-            # Node.js is available, proceed with installation
-            install_openclaw_plugin()
-        else:
-            # Node.js not available, show installation guide first
-            print(f"\n⚠️  {t('nodejs_needed_for_plugin')}")
-            if questionary.confirm(
-                t("see_nodejs_install_guide"), default=True, style=CUSTOM_STYLE
-            ).ask():
-                print("\n" + "=" * 70)
-                print("📦 Node.js Installation Guide")
-                print("=" * 70)
-                print("\n🔗 Download from: https://nodejs.org/")
-                print("\n   Recommended: LTS (Long Term Support) version")
-                if sys.platform.startswith("linux"):
-                    print("\n   Linux (using package manager):")
-                    print("   • Ubuntu/Debian: sudo apt install nodejs npm")
-                    print("   • Fedora: sudo dnf install nodejs npm")
-                    print("   • Arch: sudo pacman -S nodejs npm")
-                elif sys.platform == "darwin":
-                    print("\n   macOS:")
-                    print("   • brew install node")
-                    print("   • Or download installer from nodejs.org")
-                elif sys.platform == "win32":
-                    print("\n   Windows:")
-                    print("   • Download installer from nodejs.org")
-                    print("   • Or use: winget install OpenJS.NodeJS.LTS")
-                print("\n" + "=" * 70)
-                print("\n💡 After installing Node.js, run: python sentinellm.py setup")
-                print("   Or manually install: cd plugins/openclaw && npm install")
-
     # Create config directory
     config_dir = Path("config")
     if not config_dir.exists():
@@ -292,10 +188,14 @@ def run_setup():
     print("\n" + "=" * 70)
     print(t("setup_complete"))
     print("=" * 70)
-    print(t("next_steps"))
-    print(t("try_demo"))
-    print(t("read_docs"))
-    print(t("integrate"))
+    print("\n🚀 Next steps:")
+    print("  1. Test the demo: python examples/interactive_demo.py")
+    print("  2. Read docs: cat README.md")
+    print("  3. Start proxy: python sentinellm.py proxy")
+    print("\n🔒 To protect OpenClaw or other LLM apps:")
+    print("  • Run: python sentinellm.py proxy")
+    print("  • Change your LLM URL to: http://localhost:8080")
+    print("  • Add header: X-Target-URL: https://api.openai.com")
 
 
 if __name__ == "__main__":

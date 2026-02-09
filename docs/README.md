@@ -137,12 +137,14 @@ secret_detection:
 
 ```bash
 # Environment variables
-export API_HOST=0.0.0.0
+# Production settings (Docker/network access)
+# ⚠️  Only expose to network if needed
+export API_HOST=0.0.0.0  # Use 127.0.0.1 for localhost only
 export API_PORT=8000
 export API_WORKERS=4
 
 # Start API
-python run_api.py
+python sentinellm.py api
 ```
 
 ## 🛠️ Development

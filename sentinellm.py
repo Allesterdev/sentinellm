@@ -60,6 +60,25 @@ def main():
             from examples.interactive_demo import main as demo_main
 
             demo_main()
+        elif command == "proxy":
+            print("\n🔒 Starting SentineLLM Proxy Server...")
+            print("   Listening on: http://127.0.0.1:8080 (localhost only)")
+            print("   Target: OpenAI/Claude/etc.")
+            print("\n   Configure your app to use: http://localhost:8080/v1/chat/completions")
+            print("   Press Ctrl+C to stop\n")
+            from src.proxy.server import run_proxy
+
+            run_proxy()
+        elif command == "api":
+            print("\n🔌 Starting SentineLLM API Server...")
+            print("   Listening on: http://127.0.0.1:8000 (localhost only)")
+            print("   Docs: http://localhost:8000/docs")
+            print("   Press Ctrl+C to stop\n")
+            import uvicorn
+
+            from src.api.app import app
+
+            uvicorn.run(app, host="127.0.0.1", port=8000, reload=False)  # nosec B104
         else:
             print(f"{t('unknown_command')} {command}")
             print_help()
@@ -68,6 +87,8 @@ def main():
         choice = questionary.select(
             t("main_menu"),
             choices=[
+                "🚀 Start Proxy Server (recommended)",
+                "🔌 Start API Server",
                 t("setup_option"),
                 t("config_option"),
                 t("check_ollama_option"),
@@ -77,7 +98,24 @@ def main():
             ],
         ).ask()
 
-        if choice == t("setup_option"):
+        if choice == "🚀 Start Proxy Server (recommended)":
+            print("\n🔒 Starting SentineLLM Proxy Server...")
+            print("   Listening on: http://127.0.0.1:8080 (localhost only)")
+            print("\n   Configure your app to use: http://localhost:8080")
+            print("   Press Ctrl+C to stop\n")
+            from src.proxy.server import run_proxy
+
+            run_proxy()
+        elif choice == "🔌 Start API Server":
+            print("\n🔌 Starting SentineLLM API Server...")
+            print("   API: http://127.0.0.1:8000 (localhost only)")
+            print("   Press Ctrl+C to stop\n")
+            import uvicorn
+
+            from src.api.app import app
+
+            uvicorn.run(app, host="127.0.0.1", port=8000, reload=False)  # nosec B104
+        elif choice == t("setup_option"):
             run_setup()
         elif choice == t("config_option"):
             run_config_wizard()
@@ -101,6 +139,8 @@ def print_help():
     """Print help message."""
     print(f"\n{t('help_title')}")
     print(f"{t('help_commands')}")
+    print("  proxy          - Start LLM proxy server (recommended)")
+    print("  api            - Start validation API server")
     print(f"  {t('help_setup')}")
     print(f"  {t('help_config')}")
     print(f"  {t('help_check')}")

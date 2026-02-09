@@ -120,14 +120,12 @@ SentineLLM provides a REST API for integration with external applications:
 ### Starting the API Server
 
 ```bash
-# Using the startup script
-./start_api.sh
+# Using the CLI (secure default - localhost only)
+python sentinellm.py api
 
-# Or directly with Python
-python3 run_api.py
-
-# Or with custom host/port
-API_HOST=0.0.0.0 API_PORT=8080 python3 run_api.py
+# Or for network access (Docker/remote clients)
+# ⚠️  WARNING: Only use if you understand security implications
+API_HOST=0.0.0.0 API_PORT=8080 python sentinellm.py api
 ```
 
 The API will be available at:
@@ -227,38 +225,18 @@ For complete API reference with all endpoints, models, error codes, and integrat
 
 **→ [View Complete API Documentation](docs/api-reference.md)**
 
-### 🔌 OpenClaw Plugin
+### 🔒 LLM Proxy (Universal Integration)
 
-TypeScript plugin for seamless integration with OpenClaw AI agents:
+**Transparent HTTP proxy** that protects ANY LLM application:
 
 ```bash
-cd plugins/openclaw
-npm install
-npm run build
+# Start the proxy
+python sentinellm.py proxy
 ```
 
-**Usage:**
+Configure your app to use `http://localhost:8080` - works with OpenClaw, LangChain, or any OpenAI-compatible client.
 
-```typescript
-import { createSentineLLMPlugin } from "@sentinellm/openclaw-plugin";
-
-const security = createSentineLLMPlugin({
-  apiUrl: "http://localhost:8000",
-  blockOnError: true,
-});
-
-// Integrate with OpenClaw agent
-const agent = new Agent({
-  plugins: [
-    {
-      onInboundMessage: (msg) => security.onInboundMessage(msg),
-      onOutboundMessage: (msg) => security.onOutboundMessage(msg),
-    },
-  ],
-});
-```
-
-**→ [OpenClaw Plugin Documentation](plugins/openclaw/README.md)**
+\*\*→ [Complete Proxy Documentation](docs/proxy.md)
 
 ---
 
@@ -275,15 +253,12 @@ sentinellm/
 │   │   ├── routes/    # API route handlers
 │   │   ├── models.py  # Pydantic request/response models
 │   │   └── config.py  # API configuration
+│   ├── proxy/         # HTTP proxy server for LLMs
 │   ├── middleware/    # FastAPI middleware (future)
 │   └── models/        # Domain models (future)
-├── plugins/           # Integration plugins
-│   └── openclaw/      # OpenClaw TypeScript plugin
 ├── examples/          # Interactive demos & API clients
 ├── tests/             # Unit and integration tests
 ├── config/            # YAML configurations
-├── run_api.py         # API server entry point
-├── start_api.sh       # API startup script
 ├── sentinellm.py      # Main CLI entry point
 └── docs/              # Technical documentation
 ```

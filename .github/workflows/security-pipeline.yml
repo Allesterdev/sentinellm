@@ -292,58 +292,6 @@ jobs:
           echo "✅ All licenses are compatible"
 
   # ═══════════════════════════════════════════════════════════════════
-  # TypeScript Quality & Security (OpenClaw Plugin)
-  # ═══════════════════════════════════════════════════════════════════
-  typescript-quality:
-    name: 🔷 TypeScript Quality & Security
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v6
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: "20"
-          cache: "npm"
-          cache-dependency-path: "plugins/openclaw/package-lock.json"
-
-      - name: Install dependencies
-        working-directory: plugins/openclaw
-        run: npm ci
-
-      - name: TypeScript compilation check
-        working-directory: plugins/openclaw
-        run: npm run build
-
-      - name: ESLint (code quality)
-        working-directory: plugins/openclaw
-        run: npm run lint
-
-      - name: Run tests with coverage
-        working-directory: plugins/openclaw
-        run: npm run test:coverage
-
-      - name: Check coverage threshold (70%)
-        working-directory: plugins/openclaw
-        run: |
-          echo "📊 Checking TypeScript coverage threshold..."
-          # Coverage threshold is enforced in jest.config.js
-          echo "✅ TypeScript coverage meets 70% threshold"
-
-      - name: npm audit (security vulnerabilities)
-        working-directory: plugins/openclaw
-        run: npm audit --audit-level=moderate
-        continue-on-error: true
-
-      - name: Upload TypeScript coverage
-        uses: actions/upload-artifact@v6
-        if: always()
-        with:
-          name: typescript-coverage
-          path: plugins/openclaw/coverage/
-
-  # ═══════════════════════════════════════════════════════════════════
   # Security Summary Report
   # ═══════════════════════════════════════════════════════════════════
   security-summary:
@@ -357,7 +305,6 @@ jobs:
         trivy-scan,
         code-quality,
         tests,
-        typescript-quality,
       ]
     if: always()
     steps:

@@ -118,14 +118,12 @@ SentineLLM proporciona una API REST para integración con aplicaciones externas:
 ### Iniciar el Servidor API
 
 ```bash
-# Usando el script de inicio
-./start_api.sh
+# Usando el CLI (default seguro - solo localhost)
+python sentinellm.py api
 
-# O directamente con Python
-python3 run_api.py
-
-# O con host/puerto personalizado
-API_HOST=0.0.0.0 API_PORT=8080 python3 run_api.py
+# O para acceso desde red (Docker/clientes remotos)
+# ⚠️  ADVERTENCIA: Usar solo si entiendes las implicaciones de seguridad
+API_HOST=0.0.0.0 API_PORT=8080 python sentinellm.py api
 ```
 
 La API estará disponible en:
@@ -225,40 +223,33 @@ Para referencia completa de la API con todos los endpoints, modelos, códigos de
 
 **→ [Ver Documentación Completa de la API](docs/api-reference.md)**
 
-### 🔌 Plugin de OpenClaw
+### 🌐 Proxy LLM
 
-Plugin de TypeScript para integración perfecta con agentes AI de OpenClaw:
+Servidor proxy HTTP que valida las peticiones antes de enviarlas a cualquier LLM compatible con OpenAI:
 
 ```bash
-cd plugins/openclaw
-npm install
-npm run build
+python sentinellm.py proxy
 ```
 
-**Uso:**
+**Configuración para OpenClaw:**
 
-```typescript
-import { createSentineLLMPlugin } from "@sentinellm/openclaw-plugin";
-
-const security = createSentineLLMPlugin({
-  apiUrl: "http://localhost:8000",
-  blockOnError: true,
-});
-
-// Integrar con agente OpenClaw
-const agent = new Agent({
-  plugins: [
-    {
-      onInboundMessage: (msg) => security.onInboundMessage(msg),
-      onOutboundMessage: (msg) => security.onOutboundMessage(msg),
-    },
-  ],
-});
+```yaml
+# En tu configuración de OpenClaw
+llm:
+  provider: openai
+  baseUrl: http://localhost:8080/v1 # Proxy de SentineLLM
+  headers:
+    X-Target-URL: https://api.openai.com # URL real del LLM
 ```
 
-**→ [Documentación del Plugin OpenClaw](plugins/openclaw/README.md)**
+**Funciona con cualquier cliente compatible con OpenAI:**
 
----
+- OpenClaw
+- LangChain
+- OpenAI Python/Node.js SDK
+- Aplicaciones personalizadas
+
+**→ [Documentación del Proxy](docs/proxy.md)**
 
 ## 📁 Estructura del Proyecto
 
@@ -273,15 +264,12 @@ sentinellm/
 │   │   ├── routes/    # Manejadores de rutas API
 │   │   ├── models.py  # Modelos Pydantic request/response
 │   │   └── config.py  # Configuración de la API
+│   ├── proxy/         # Servidor proxy HTTP para LLMs
 │   ├── middleware/    # FastAPI middleware (futuro)
 │   └── models/        # Modelos de dominio (futuro)
-├── plugins/           # Plugins de integración
-│   └── openclaw/      # Plugin TypeScript para OpenClaw
 ├── examples/          # Demos interactivos y clientes API
 ├── tests/             # Tests unitarios e integración
 ├── config/            # Configuraciones YAML
-├── run_api.py         # Punto de entrada del servidor API
-├── start_api.sh       # Script de inicio de la API
 ├── sentinellm.py      # Punto de entrada CLI principal
 └── docs/              # Documentación técnica
 ```
