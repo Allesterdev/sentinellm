@@ -10,6 +10,19 @@
 
 ## 🚀 Instalación y Uso
 
+### Prerequisitos
+
+Primero instala SentineLLM (solo la primera vez):
+
+```bash
+# Clonar y setup
+git clone https://github.com/Allesterdev/sentinellm.git
+cd sentinellm
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+```
+
 ### Paso 1: Iniciar el proxy
 
 ```bash
