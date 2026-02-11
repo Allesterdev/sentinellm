@@ -2,10 +2,11 @@
 LLM Proxy Server - Validates requests before forwarding to LLM providers.
 
 This proxy sits between your application (OpenClaw, etc.) and LLM providers
-(OpenAI, Claude, etc.) to validate inputs for security threats.
+(OpenAI, Claude, Gemini, etc.) to validate inputs for security threats.
 """
 
 import logging
+import os
 
 import httpx
 from fastapi import FastAPI, HTTPException, Request, Response
@@ -15,14 +16,24 @@ from ..core.prompt_validator import PromptValidator
 logger = logging.getLogger(__name__)
 
 
-def create_proxy_app() -> FastAPI:
-    """Create proxy FastAPI application."""
+def create_proxy_app(target_url: str | None = None) -> FastAPI:
+    """Create proxy FastAPI application.
+
+    Args:
+        target_url: Target LLM URL to forward requests to.
+                   Defaults to SENTINELLM_TARGET_URL env var or https://api.openai.com
+    """
     app = FastAPI(
         title="SentineLLM Proxy",
         description="Security proxy for LLM API requests",
         version="0.1.0",
     )
 
+    # Determine target URL
+    if target_url is None:
+        target_url = os.environ.get("SENTINELLM_TARGET_URL", "https://api.openai.com")
+
+    logger.info(f"Proxy will forward requests to: {target_url}")
     validator = PromptValidator()
 
     @app.post("/v1/chat/completions")
@@ -68,8 +79,8 @@ def create_proxy_app() -> FastAPI:
                         },
                     )
 
-            # Get target LLM URL from headers or environment
-            target_url = request.headers.get("X-Target-URL", "https://api.openai.com")
+            # Get target LLM URL from headers, falling back to configured default
+            forward_url = request.headers.get("X-Target-URL", target_url)
 
             # Forward to actual LLM
             async with httpx.AsyncClient() as client:
@@ -80,7 +91,7 @@ def create_proxy_app() -> FastAPI:
 
                 # Forward request
                 response = await client.post(
-                    f"{target_url}{request.url.path}",
+                    f"{forward_url}{request.url.path}",
                     json=body,
                     headers=forward_headers,
                     timeout=120.0,
@@ -108,17 +119,31 @@ def create_proxy_app() -> FastAPI:
     return app
 
 
-def run_proxy(host: str = "127.0.0.1", port: int = 8080):
+def run_proxy(
+    host: str = "127.0.0.1",
+    port: int = 8080,
+    target_url: str | None = None,
+):
     """Run the proxy server.
 
     Args:
         host: Host to bind to. Default 127.0.0.1 (localhost only).
               Use 0.0.0.0 only if you need network access (security risk).
         port: Port to listen on.
+        target_url: Target LLM URL (e.g., https://generativelanguage.googleapis.com
+                   for Gemini). Defaults to SENTINELLM_TARGET_URL env var or OpenAI.
     """
     import uvicorn
 
-    app = create_proxy_app()
+    app = create_proxy_app(target_url=target_url)
+
+    print("🛡️  SentineLLM Proxy Server")
+    print(f"   Listening on: http://{host}:{port}")
+    print(
+        f"   Forwarding to: {target_url or os.environ.get('SENTINELLM_TARGET_URL', 'https://api.openai.com')}"
+    )
+    print("   Press Ctrl+C to stop\n")
+
     uvicorn.run(app, host=host, port=port)
 
 

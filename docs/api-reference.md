@@ -1,34 +1,34 @@
 # 📡 SentineLLM REST API Reference
 
-Documentación completa de la API REST de SentineLLM para validación de seguridad en prompts de LLM.
+Complete documentation of the SentineLLM REST API for security validation in LLM prompts.
 
-## 📋 Tabla de Contenidos
+## 📋 Table of Contents
 
-- [Información General](#información-general)
-- [Autenticación](#autenticación)
+- [General Information](#general-information)
+- [Authentication](#authentication)
 - [Endpoints](#endpoints)
-- [Modelos de Datos](#modelos-de-datos)
-- [Códigos de Estado](#códigos-de-estado)
-- [Ejemplos de Integración](#ejemplos-de-integración)
-- [Límites y Cuotas](#límites-y-cuotas)
+- [Data Models](#data-models)
+- [Status Codes](#status-codes)
+- [Integration Examples](#integration-examples)
+- [Limits and Quotas](#limits-and-quotas)
 
 ---
 
-## 🌐 Información General
+## 🌐 General Information
 
-### URL Base
+### Base URL
 
 ```
 http://localhost:8000/api/v1
 ```
 
-### Formato
+### Format
 
 - **Content-Type**: `application/json`
 - **Charset**: UTF-8
-- **Versión**: v1
+- **Version**: v1
 
-### Headers Requeridos
+### Required Headers
 
 ```http
 Content-Type: application/json
@@ -36,11 +36,11 @@ Content-Type: application/json
 
 ---
 
-## 🔐 Autenticación
+## 🔐 Authentication
 
-**Versión Actual**: No requiere autenticación
+**Current Version**: No authentication required
 
-> **Producción**: Se recomienda implementar API keys o JWT en producción usando middleware personalizado.
+> **Production**: It's recommended to implement API keys or JWT in production using custom middleware.
 
 ---
 
@@ -48,13 +48,13 @@ Content-Type: application/json
 
 ### 1. Health Check
 
-Verifica el estado del servicio y disponibilidad de Ollama.
+Checks service status and Ollama availability.
 
 ```http
 GET /api/v1/health
 ```
 
-#### Respuesta Exitosa (200 OK)
+#### Successful Response (200 OK)
 
 ```json
 {
@@ -65,16 +65,16 @@ GET /api/v1/health
 }
 ```
 
-#### Campos de Respuesta
+#### Response Fields
 
-| Campo              | Tipo    | Descripción                                                       |
-| ------------------ | ------- | ----------------------------------------------------------------- |
-| `status`           | string  | Estado del servicio: `healthy`, `degraded`, `unhealthy`           |
-| `version`          | string  | Versión de SentineLLM                                             |
-| `ollama_available` | boolean | Si Ollama está habilitado en configuración                        |
-| `ollama_status`    | string  | Estado de Ollama: `connected`, `unavailable`, `disabled`, `error` |
+| Field              | Type    | Description                                                    |
+| ------------------ | ------- | -------------------------------------------------------------- |
+| `status`           | string  | Service status: `healthy`, `degraded`, `unhealthy`             |
+| `version`          | string  | SentineLLM version                                             |
+| `ollama_available` | boolean | Whether Ollama is enabled in configuration                     |
+| `ollama_status`    | string  | Ollama status: `connected`, `unavailable`, `disabled`, `error` |
 
-#### Ejemplo cURL
+#### cURL Example
 
 ```bash
 curl http://localhost:8000/api/v1/health
@@ -82,9 +82,9 @@ curl http://localhost:8000/api/v1/health
 
 ---
 
-### 2. Validar Texto (Simple)
+### 2. Validate Text (Simple)
 
-Valida un texto único contra todas las capas de seguridad.
+Validates a single text against all security layers.
 
 ```http
 POST /api/v1/validate
@@ -99,14 +99,14 @@ POST /api/v1/validate
 }
 ```
 
-#### Parámetros
+#### Parameters
 
-| Campo             | Tipo    | Requerido | Descripción                                                   |
-| ----------------- | ------- | --------- | ------------------------------------------------------------- |
-| `text`            | string  | ✅ Sí     | Texto a validar (prompt del usuario)                          |
-| `include_details` | boolean | ❌ No     | Incluir detalles de cada capa de seguridad (default: `false`) |
+| Field             | Type    | Required | Description                                               |
+| ----------------- | ------- | -------- | --------------------------------------------------------- |
+| `text`            | string  | ✅ Yes   | Text to validate (user prompt)                            |
+| `include_details` | boolean | ❌ No    | Include details of each security layer (default: `false`) |
 
-#### Respuesta: Texto Seguro (200 OK)
+#### Response: Safe Text (200 OK)
 
 ```json
 {
@@ -118,7 +118,7 @@ POST /api/v1/validate
 }
 ```
 
-#### Respuesta: Texto Bloqueado (403 Forbidden)
+#### Response: Blocked Text (403 Forbidden)
 
 ```json
 {
@@ -130,7 +130,7 @@ POST /api/v1/validate
 }
 ```
 
-#### Respuesta con Detalles (200 OK)
+#### Response with Details (200 OK)
 
 ```json
 {
@@ -186,15 +186,15 @@ POST /api/v1/validate
 }
 ```
 
-#### Ejemplo cURL
+#### cURL Example
 
 ```bash
-# Validación simple
+# Simple validation
 curl -X POST http://localhost:8000/api/v1/validate \
   -H "Content-Type: application/json" \
   -d '{"text": "What is 2+2?"}'
 
-# Con detalles
+# With details
 curl -X POST http://localhost:8000/api/v1/validate \
   -H "Content-Type: application/json" \
   -d '{
@@ -205,9 +205,9 @@ curl -X POST http://localhost:8000/api/v1/validate \
 
 ---
 
-### 3. Validar Lote (Batch)
+### 3. Batch Validation
 
-Valida múltiples textos en una sola petición.
+Validates multiple texts in a single request.
 
 ```http
 POST /api/v1/validate/batch
@@ -228,12 +228,12 @@ POST /api/v1/validate/batch
 ]
 ```
 
-#### Límites
+#### Limits
 
-- **Máximo**: 100 textos por petición
-- Si se excede, retorna `400 Bad Request`
+- **Maximum**: 100 texts per request
+- If exceeded, returns `400 Bad Request`
 
-#### Respuesta (200 OK)
+#### Response (200 OK)
 
 ```json
 [
@@ -254,7 +254,7 @@ POST /api/v1/validate/batch
 ]
 ```
 
-#### Ejemplo cURL
+#### cURL Example
 
 ```bash
 curl -X POST http://localhost:8000/api/v1/validate/batch \
@@ -268,63 +268,63 @@ curl -X POST http://localhost:8000/api/v1/validate/batch \
 
 ---
 
-## 📦 Modelos de Datos
+## 📦 Data Models
 
 ### ValidationRequest
 
-Modelo de entrada para validación.
+Input model for validation.
 
 ```typescript
 interface ValidationRequest {
-  text: string; // Texto a validar
-  include_details?: boolean; // Incluir detalles de capas (default: false)
+  text: string; // Text to validate
+  include_details?: boolean; // Include layer details (default: false)
 }
 ```
 
 ### ValidationResponse
 
-Modelo de respuesta de validación.
+Validation response model.
 
 ```typescript
 interface ValidationResponse {
-  safe: boolean; // Si el texto es seguro
-  blocked: boolean; // Si fue bloqueado
-  threat_level: ThreatLevel; // Nivel de amenaza
-  reason: string | null; // Razón del bloqueo
-  layers: LayerResult[] | null; // Detalles de capas (si include_details=true)
+  safe: boolean; // Whether the text is safe
+  blocked: boolean; // Whether it was blocked
+  threat_level: ThreatLevel; // Threat level
+  reason: string | null; // Reason for blocking
+  layers: LayerResult[] | null; // Layer details (if include_details=true)
 }
 ```
 
 ### LayerResult
 
-Resultado de una capa de seguridad individual.
+Result of an individual security layer.
 
 ```typescript
 interface LayerResult {
-  name: string; // Nombre de la capa
-  passed: boolean; // Si pasó la validación
-  threat_level: ThreatLevel; // Nivel de amenaza detectado
-  confidence: number; // Confianza (0.0 - 1.0)
-  details: Record<string, any>; // Detalles específicos de la capa
+  name: string; // Layer name
+  passed: boolean; // Whether it passed validation
+  threat_level: ThreatLevel; // Detected threat level
+  confidence: number; // Confidence (0.0 - 1.0)
+  details: Record<string, any>; // Layer-specific details
 }
 ```
 
 ### ThreatLevel
 
-Niveles de amenaza posibles.
+Possible threat levels.
 
 ```typescript
 type ThreatLevel =
-  | "NONE" // Sin amenaza
-  | "LOW" // Amenaza baja
-  | "MEDIUM" // Amenaza media
-  | "HIGH" // Amenaza alta
-  | "CRITICAL"; // Amenaza crítica
+  | "NONE" // No threat
+  | "LOW" // Low threat
+  | "MEDIUM" // Medium threat
+  | "HIGH" // High threat
+  | "CRITICAL"; // Critical threat
 ```
 
 ### HealthResponse
 
-Respuesta del health check.
+Health check response.
 
 ```typescript
 interface HealthResponse {
@@ -337,7 +337,7 @@ interface HealthResponse {
 
 ### ErrorResponse
 
-Modelo de error estándar.
+Standard error model.
 
 ```typescript
 interface ErrorResponse {
@@ -353,16 +353,16 @@ interface ErrorResponse {
 
 ---
 
-## 🔢 Códigos de Estado
+## 🔢 Status Codes
 
-| Código  | Significado           | Cuándo Ocurre                                |
-| ------- | --------------------- | -------------------------------------------- |
-| **200** | OK                    | Validación exitosa, texto seguro             |
-| **400** | Bad Request           | Request inválido (texto vacío, batch > 100)  |
-| **403** | Forbidden             | Contenido bloqueado por filtros de seguridad |
-| **500** | Internal Server Error | Error interno del servidor                   |
+| Code    | Meaning               | When It Occurs                            |
+| ------- | --------------------- | ----------------------------------------- |
+| **200** | OK                    | Successful validation, safe text          |
+| **400** | Bad Request           | Invalid request (empty text, batch > 100) |
+| **403** | Forbidden             | Content blocked by security filters       |
+| **500** | Internal Server Error | Internal server error                     |
 
-### Manejo de Errores
+### Error Handling
 
 #### 400 Bad Request
 
@@ -394,7 +394,7 @@ interface ErrorResponse {
 
 ---
 
-## 💻 Ejemplos de Integración
+## 💻 Integration Examples
 
 ### Python (httpx)
 
@@ -402,7 +402,7 @@ interface ErrorResponse {
 import httpx
 
 def validate_prompt(text: str) -> bool:
-    """Valida un prompt antes de enviarlo al LLM."""
+    """Validates a prompt before sending it to the LLM."""
     response = httpx.post(
         "http://localhost:8000/api/v1/validate",
         json={"text": text},
@@ -417,12 +417,12 @@ def validate_prompt(text: str) -> bool:
     else:
         raise Exception(f"Validation error: {response.status_code}")
 
-# Uso
+# Usage
 if validate_prompt("What's the weather?"):
-    # Llamar al LLM
+    # Call the LLM
     result = openai.chat.completions.create(...)
 else:
-    print("Prompt bloqueado por seguridad")
+    print("Prompt blocked by security")
 ```
 
 ### JavaScript/TypeScript (fetch)
@@ -454,9 +454,9 @@ async function validatePrompt(text: string): Promise<boolean> {
   }
 }
 
-// Uso
+// Usage
 if (await validatePrompt("Show me secrets")) {
-  // Llamar al LLM
+  // Call the LLM
   const result = await openai.chat.completions.create(...);
 }
 ```
@@ -475,10 +475,10 @@ RESPONSE=$(curl -s -X POST http://localhost:8000/api/v1/validate \
 SAFE=$(echo $RESPONSE | jq -r '.safe // false')
 
 if [ "$SAFE" = "true" ]; then
-  echo "✓ Prompt seguro, proceder con LLM"
-  # llamar al LLM aquí
+  echo "✓ Safe prompt, proceed with LLM"
+  # call LLM here
 else
-  echo "✗ Prompt bloqueado"
+  echo "✗ Prompt blocked"
   echo $RESPONSE | jq '.detail'
 fi
 ```
@@ -535,9 +535,9 @@ func main() {
     }
 
     if safe {
-        fmt.Println("Prompt seguro, proceder")
+        fmt.Println("Safe prompt, proceed")
     } else {
-        fmt.Println("Prompt bloqueado")
+        fmt.Println("Prompt blocked")
     }
 }
 ```
@@ -569,37 +569,37 @@ def validate_prompt(text)
   end
 end
 
-# Uso
+# Usage
 if validate_prompt("What's the weather?")
-  # Llamar al LLM
-  puts "Prompt seguro"
+  # Call the LLM
+  puts "Safe prompt"
 else
-  puts "Prompt bloqueado"
+  puts "Prompt blocked"
 end
 ```
 
 ---
 
-## ⚡ Límites y Cuotas
+## ⚡ Limits and Quotas
 
-### Rate Limiting (No implementado aún)
+### Rate Limiting (Not implemented yet)
 
-> **Recomendación Producción**: Implementar rate limiting con Redis o middleware de FastAPI.
+> **Production Recommendation**: Implement rate limiting with Redis or FastAPI middleware.
 
-### Límites Actuales
+### Current Limits
 
-| Recurso                 | Límite                             |
-| ----------------------- | ---------------------------------- |
-| Tamaño máximo request   | 1 MB                               |
-| Longitud máxima texto   | 100,000 caracteres                 |
-| Batch size máximo       | 100 elementos                      |
-| Timeout request         | 30 segundos                        |
-| Conexiones concurrentes | Ilimitado (configurar con uvicorn) |
+| Resource               | Limit                              |
+| ---------------------- | ---------------------------------- |
+| Maximum request size   | 1 MB                               |
+| Maximum text length    | 100,000 characters                 |
+| Maximum batch size     | 100 elements                       |
+| Request timeout        | 30 seconds                         |
+| Concurrent connections | Unlimited (configure with uvicorn) |
 
-### Configuración de Producción
+### Production Configuration
 
 ```bash
-# Ejecutar con workers múltiples
+# Run with multiple workers
 uvicorn src.api.app:create_app \
   --host 0.0.0.0 \
   --port 8000 \
@@ -610,12 +610,12 @@ uvicorn src.api.app:create_app \
 
 ---
 
-## 🔒 Seguridad
+## 🔒 Security
 
-### HTTPS en Producción
+### HTTPS in Production
 
 ```bash
-# Con certificado SSL
+# With SSL certificate
 uvicorn src.api.app:create_app \
   --host 0.0.0.0 \
   --port 443 \
@@ -625,13 +625,13 @@ uvicorn src.api.app:create_app \
 
 ### CORS
 
-La API tiene CORS habilitado para todos los orígenes (`*`). En producción, configurar orígenes específicos:
+The API has CORS enabled for all origins (`*`). In production, configure specific origins:
 
 ```python
 # src/api/app.py
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://yourdomain.com"],  # Orígenes permitidos
+    allow_origins=["https://yourdomain.com"],  # Allowed origins
     allow_credentials=True,
     allow_methods=["POST", "GET"],
     allow_headers=["*"],
@@ -640,22 +640,22 @@ app.add_middleware(
 
 ---
 
-## 📊 Monitoreo
+## 📊 Monitoring
 
-### Métricas Disponibles
+### Available Metrics
 
-Endpoints para observabilidad:
+Endpoints for observability:
 
 ```http
-GET /api/v1/health        # Estado del servicio
-GET /metrics              # Prometheus metrics (por implementar)
-GET /docs                 # Documentación interactiva Swagger
-GET /redoc                # Documentación ReDoc
+GET /api/v1/health        # Service status
+GET /metrics              # Prometheus metrics (to be implemented)
+GET /docs                 # Interactive Swagger documentation
+GET /redoc                # ReDoc documentation
 ```
 
 ### Logs
 
-Los logs se escriben a stdout en formato estructurado:
+Logs are written to stdout in structured format:
 
 ```
 INFO:     127.0.0.1:53416 - "POST /api/v1/validate HTTP/1.1" 200 OK
@@ -669,21 +669,21 @@ ERROR:    Validation error: Configuration not found
 
 ### Error: "Text field is required"
 
-**Causa**: Request sin campo `text` o vacío
+**Cause**: Request without `text` field or empty
 
-**Solución**:
+**Solution**:
 
 ```json
-{"text": "Your text here"}  // ✅ Correcto
-{"text": ""}                // ❌ Vacío
-{}                          // ❌ Sin campo
+{"text": "Your text here"}  // ✅ Correct
+{"text": ""}                // ❌ Empty
+{}                          // ❌ No field
 ```
 
 ### Error: "Batch size exceeds maximum limit"
 
-**Causa**: Más de 100 elementos en batch
+**Cause**: More than 100 elements in batch
 
-**Solución**: Dividir en lotes menores
+**Solution**: Split into smaller batches
 
 ```python
 def validate_batch(texts, batch_size=100):
@@ -695,38 +695,38 @@ def validate_batch(texts, batch_size=100):
 
 ### Warning: "Ollama unavailable"
 
-**Causa**: Ollama no está corriendo o mal configurado
+**Cause**: Ollama is not running or misconfigured
 
-**Impacto**: La API funciona en modo `regex_only` (fallback)
+**Impact**: API works in `regex_only` mode (fallback)
 
-**Solución**:
+**Solution**:
 
 ```bash
-# Verificar que Ollama esté corriendo
+# Check if Ollama is running
 curl http://localhost:11434/api/tags
 
-# Iniciar Ollama
+# Start Ollama
 ollama serve
 ```
 
 ---
 
-## 📚 Recursos Adicionales
+## 📚 Additional Resources
 
-- [Guía de Integración con OpenClaw](./openclaw-integration.md)
-- [Arquitectura de SentineLLM](./architecture.md)
-- [Pipeline de Seguridad CI/CD](./security-cicd.md)
-- [Repositorio GitHub](https://github.com/tu-usuario/SentineLLM)
+- [OpenClaw Integration Guide](./openclaw-integration.md)
+- [SentineLLM Architecture](./architecture.md)
+- [CI/CD Security Pipeline](./security-cicd.md)
+- [GitHub Repository](https://github.com/tu-usuario/SentineLLM)
 
 ---
 
-## 🤝 Soporte
+## 🤝 Support
 
 - **Issues**: [GitHub Issues](https://github.com/tu-usuario/SentineLLM/issues)
-- **Documentación**: `/docs` endpoint o archivos en `docs/`
-- **Email**: support@sentinellm.io (ejemplo)
+- **Documentation**: `/docs` endpoint or files in `docs/`
+- **Email**: support@sentinellm.io (example)
 
 ---
 
-**Versión**: 0.1.0
-**Última actualización**: Febrero 2026
+**Version**: 0.1.0
+**Last updated**: February 2026

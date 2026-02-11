@@ -1,19 +1,19 @@
-# Arquitectura de SentineLLM
+# SentineLLM Architecture
 
-## 🎯 Visión General
+## 🎯 Overview
 
-SentineLLM es un **AI Security Gateway** que implementa el patrón de **Defensa en Profundidad** para proteger aplicaciones LLM contra dos amenazas principales:
+SentineLLM is an **AI Security Gateway** that implements the **Defense in Depth** pattern to protect LLM applications against two main threats:
 
-1. **Prompt Injections** (entrada)
-2. **Secret Leakage & DLP** (salida)
+1. **Prompt Injections** (input)
+2. **Secret Leakage & DLP** (output)
 
 ---
 
-## 🏗️ Arquitectura de Capas
+## 🏗️ Layered Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                         Usuario                              │
+│                         User                                 │
 └────────────────────────┬────────────────────────────────────┘
                          │
                          ▼
@@ -48,81 +48,81 @@ SentineLLM es un **AI Security Gateway** que implementa el patrón de **Defensa 
                          │
                          ▼
 ┌─────────────────────────────────────────────────────────────┐
-│                         Usuario                              │
+│                         User                                 │
 └─────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## 📦 Componentes Principales
+## 📦 Main Components
 
 ### 1. Core Detection Engine
 
-**Ubicación:** `src/core/`
+**Location:** `src/core/`
 
-#### `detector.py` - Motor Principal
+#### `detector.py` - Main Engine
 
-- **Clase:** `SecretDetector`
-- **Responsabilidad:** Orquestar detección multicapa
-- **Algoritmo:**
-  1. **Fase 1:** Regex rápido (O(n)) sobre patrones conocidos
-  2. **Fase 2:** Análisis de entropía Shannon para strings sospechosos
-  3. **Fase 3:** Validación con checksums (Luhn, AWS)
-  4. **Fase 4:** Scoring de confianza basado en contexto
+- **Class:** `SecretDetector`
+- **Responsibility:** Orchestrate multi-layer detection
+- **Algorithm:**
+  1. **Phase 1:** Fast regex (O(n)) on known patterns
+  2. **Phase 2:** Shannon entropy analysis for suspicious strings
+  3. **Phase 3:** Checksum validation (Luhn, AWS)
+  4. **Phase 4:** Context-based confidence scoring
 
-#### `entropy.py` - Análisis de Entropía
+#### `entropy.py` - Entropy Analysis
 
-- **Función:** `calculate_entropy(text) -> float`
-- **Base teórica:** Entropía de Shannon
-- **Fórmula:** H(X) = -Σ p(x) \* log₂(p(x))
-- **Uso:** Detectar strings aleatorios típicos de tokens/claves
+- **Function:** `calculate_entropy(text) -> float`
+- **Theoretical basis:** Shannon Entropy
+- **Formula:** H(X) = -Σ p(x) \* log₂(p(x))
+- **Usage:** Detect random strings typical of tokens/keys
 
-#### `validator.py` - Validadores Específicos
+#### `validator.py` - Specific Validators
 
-- `luhn_check()` - Algoritmo de Luhn para tarjetas de crédito
-- `validate_aws_key()` - Validación de formato AWS Access Keys
-- `validate_github_token()` - Validación de prefijos GitHub
-- `validate_jwt()` - Validación de estructura JWT
+- `luhn_check()` - Luhn algorithm for credit cards
+- `validate_aws_key()` - AWS Access Keys format validation
+- `validate_github_token()` - GitHub prefixes validation
+- `validate_jwt()` - JWT structure validation
 
 ---
 
-## 🔍 Estrategia de Detección
+## 🔍 Detection Strategy
 
-### Niveles de Amenaza (ThreatLevel Enum)
+### Threat Levels (ThreatLevel Enum)
 
 ```python
-NONE = 0       # Sin amenaza
-LOW = 1        # Patrón sospechoso, baja entropía
-MEDIUM = 2     # Coincidencia parcial de regex
-HIGH = 3       # Coincidencia exacta (AKIA, Bearer)
-CRITICAL = 4   # Secreto válido confirmado + alta entropía
+NONE = 0       # No threat
+LOW = 1        # Suspicious pattern, low entropy
+MEDIUM = 2     # Partial regex match
+HIGH = 3       # Exact match (AKIA, Bearer)
+CRITICAL = 4   # Confirmed valid secret + high entropy
 ```
 
-### Matriz de Decisión
+### Decision Matrix
 
-| Regex Match | Validación | Entropía | Contexto | → Threat Level |
-| ----------- | ---------- | -------- | -------- | -------------- |
-| ✅          | ✅         | Alta     | ✅       | **CRITICAL**   |
-| ✅          | ✅         | Alta     | ❌       | **HIGH**       |
-| ✅          | ❌         | Alta     | ✅       | **MEDIUM**     |
-| ✅          | ❌         | Baja     | ✅       | **LOW**        |
-| ❌          | -          | Alta     | ✅       | **MEDIUM**     |
+| Regex Match | Validation | Entropy | Context | → Threat Level |
+| ----------- | ---------- | ------- | ------- | -------------- |
+| ✅          | ✅         | High    | ✅      | **CRITICAL**   |
+| ✅          | ✅         | High    | ❌      | **HIGH**       |
+| ✅          | ❌         | High    | ✅      | **MEDIUM**     |
+| ✅          | ❌         | Low     | ✅      | **LOW**        |
+| ❌          | -          | High    | ✅      | **MEDIUM**     |
 
 ---
 
-## 🛡️ Patrones Detectados (v0.1.0)
+## 🛡️ Detected Patterns (v0.1.0)
 
-### Implementado
+### Implemented
 
 - ✅ AWS Access Keys (AKIA, ASIA, ABIA, ACCA)
 - ✅ AWS Secret Keys
 - ✅ GitHub Tokens (ghp*, gho*, ghs*, ghu*, ghr\_)
 - ✅ Bearer Tokens
 - ✅ JWT Tokens
-- ✅ Tarjetas de Crédito (Visa, Mastercard, Amex, etc.)
-- ✅ Generic API Keys (por entropía)
+- ✅ Credit Cards (Visa, Mastercard, Amex, etc.)
+- ✅ Generic API Keys (by entropy)
 
-### Próximos
+### Upcoming
 
 - 🔄 SSH Private Keys
 - 🔄 Database Connection Strings
@@ -134,7 +134,7 @@ CRITICAL = 4   # Secreto válido confirmado + alta entropía
 
 ## 🧪 Testing Strategy
 
-### Cobertura: 98%
+### Coverage: 98%
 
 ```
 src/core/detector.py    98%    (93 stmts, 2 miss)
@@ -144,99 +144,99 @@ src/core/validator.py   95%    (37 stmts, 2 miss)
 
 ### Test Categories
 
-1. **Unit Tests** - Funciones individuales
-2. **Integration Tests** - Flujo end-to-end
-3. **Property-based Tests** (Hypothesis) - Edge cases generados
-4. **Performance Tests** - Benchmarking (futuro)
+1. **Unit Tests** - Individual functions
+2. **Integration Tests** - End-to-end flow
+3. **Property-based Tests** (Hypothesis) - Generated edge cases
+4. **Performance Tests** - Benchmarking (future)
 
 ---
 
 ## 📊 Performance
 
-### Benchmarks Iniciales (estimados)
+### Initial Benchmarks (estimated)
 
-| Operación        | Tiempo | Throughput   |
+| Operation        | Time   | Throughput   |
 | ---------------- | ------ | ------------ |
 | Regex Scan (1KB) | ~1ms   | 1M chars/s   |
 | Entropy Calc     | ~0.5ms | 2M chars/s   |
 | Full Scan (1KB)  | ~5ms   | 200K chars/s |
 
-**Objetivo:** <10ms latencia para 99% de requests
+**Target:** <10ms latency for 99% of requests
 
 ---
 
-## 🔐 Principios de Diseño
+## 🔐 Design Principles
 
 ### SOLID
 
-- **Single Responsibility:** Cada módulo tiene una única responsabilidad
-- **Open/Closed:** Fácil añadir nuevos detectores sin modificar existentes
-- **Liskov Substitution:** BaseFilter abstracto para filtros intercambiables
-- **Interface Segregation:** Interfaces pequeñas y específicas
-- **Dependency Inversion:** Depender de abstracciones, no implementaciones
+- **Single Responsibility:** Each module has a single responsibility
+- **Open/Closed:** Easy to add new detectors without modifying existing ones
+- **Liskov Substitution:** Abstract BaseFilter for interchangeable filters
+- **Interface Segregation:** Small and specific interfaces
+- **Dependency Inversion:** Depend on abstractions, not implementations
 
 ### Defense in Depth
 
-1. **Capa 1:** Regex (rápido, patrones conocidos)
-2. **Capa 2:** Entropía (strings aleatorios)
-3. **Capa 3:** Validadores (confirmación algorítmica)
-4. **Capa 4:** ML/Ollama (detección semántica) - futuro
+1. **Layer 1:** Regex (fast, known patterns)
+2. **Layer 2:** Entropy (random strings)
+3. **Layer 3:** Validators (algorithmic confirmation)
+4. **Layer 4:** ML/Ollama (semantic detection) - future
 
 ---
 
-## 🚀 Roadmap Técnico
+## 🚀 Technical Roadmap
 
-### Fase 1: Core Detection ✅ (ACTUAL)
+### Phase 1: Core Detection ✅ (CURRENT)
 
-- [x] Estructura del proyecto
-- [x] Detección por Regex
-- [x] Análisis de entropía
-- [x] Validadores Luhn/AWS
-- [x] Tests con 98% cobertura
+- [x] Project structure
+- [x] Regex detection
+- [x] Entropy analysis
+- [x] Luhn/AWS validators
+- [x] Tests with 98% coverage
 
-### Fase 2: API REST (Semana 2)
+### Phase 2: REST API (Week 2)
 
 - [ ] FastAPI endpoints
-- [ ] Middleware de interceptación
+- [ ] Interception middleware
 - [ ] Request/Response schemas (Pydantic)
 - [ ] Health checks
 - [ ] Rate limiting
 
-### Fase 3: ML Integration (Semana 3-4)
+### Phase 3: ML Integration (Week 3-4)
 
-- [ ] Ollama local setup
+- [ ] Local Ollama setup
 - [ ] Prompt injection detection
 - [ ] Semantic analysis
-- [ ] Fine-tuning con datasets OWASP
+- [ ] Fine-tuning with OWASP datasets
 
-### Fase 4: Observability (Semana 5)
+### Phase 4: Observability (Week 5)
 
 - [ ] Structured logging (JSON)
 - [ ] Prometheus metrics
 - [ ] Grafana dashboards
 - [ ] Alerting (PagerDuty/Slack)
 
-### Fase 5: Cloud Deployment (Semana 6-7)
+### Phase 5: Cloud Deployment (Week 6-7)
 
-- [ ] Dockerfile optimizado
-- [ ] Terraform para AWS
+- [ ] Optimized Dockerfile
+- [ ] Terraform for AWS
 - [ ] ECS/Fargate deployment
 - [ ] CloudWatch integration
 - [ ] WAF rules
 
-### Fase 6: Enterprise Features (Semana 8+)
+### Phase 6: Enterprise Features (Week 8+)
 
 - [ ] Multi-tenancy
 - [ ] RBAC (Role-Based Access Control)
 - [ ] Compliance reporting (SOC2, GDPR)
 - [ ] SIEM integration (Splunk/ELK)
-- [ ] Audit logs inmutables
+- [ ] Immutable audit logs
 
 ---
 
-## 🔧 Configuración
+## 🔧 Configuration
 
-### Variables de Entorno (.env)
+### Environment Variables (.env)
 
 ```bash
 # API Settings
@@ -259,30 +259,30 @@ AWS_REGION=us-east-1
 
 ---
 
-## 📈 Métricas de Éxito
+## 📈 Success Metrics
 
 ### KPIs
 
-- **Detection Rate:** >95% de secretos conocidos detectados
+- **Detection Rate:** >95% of known secrets detected
 - **False Positive Rate:** <2%
 - **Latency p99:** <10ms
-- **Throughput:** >10k requests/segundo
+- **Throughput:** >10k requests/second
 - **Availability:** 99.9% uptime
 
 ---
 
-## 🤝 Contribuciones
+## 🤝 Contributions
 
-### Áreas de Mejora
+### Areas for Improvement
 
-1. **Más patrones:** Añadir detección de otros servicios
-2. **Performance:** Optimizar regex con lazy evaluation
-3. **ML Models:** Fine-tuning de modelos Ollama
-4. **Documentación:** Swagger/OpenAPI completo
+1. **More patterns:** Add detection for other services
+2. **Performance:** Optimize regex with lazy evaluation
+3. **ML Models:** Fine-tuning Ollama models
+4. **Documentation:** Complete Swagger/OpenAPI
 
 ---
 
-## 📚 Referencias
+## 📚 References
 
 - [OWASP Top 10 for LLMs](https://owasp.org/www-project-top-10-for-large-language-model-applications/)
 - [Shannon Entropy](<https://en.wikipedia.org/wiki/Entropy_(information_theory)>)

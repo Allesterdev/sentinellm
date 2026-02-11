@@ -61,14 +61,31 @@ def main():
 
             demo_main()
         elif command == "proxy":
+            # Parse optional arguments
+            host = "127.0.0.1"
+            port = 8080
+            target_url = None
+
+            for i, arg in enumerate(sys.argv[2:], start=2):
+                if arg in ("--host", "-h") and i + 1 < len(sys.argv):
+                    host = sys.argv[i + 1]
+                elif arg in ("--port", "-p") and i + 1 < len(sys.argv):
+                    port = int(sys.argv[i + 1])
+                elif arg in ("--target-url", "-t") and i + 1 < len(sys.argv):
+                    target_url = sys.argv[i + 1]
+
             print("\n🔒 Starting SentineLLM Proxy Server...")
-            print("   Listening on: http://127.0.0.1:8080 (localhost only)")
-            print("   Target: OpenAI/Claude/etc.")
-            print("\n   Configure your app to use: http://localhost:8080/v1/chat/completions")
+            print(f"   Listening on: http://{host}:{port}")
+            if target_url:
+                print(f"   Target: {target_url}")
+            else:
+                print("   Target: OpenAI API (default)")
+            print(f"\n   Configure your app to use: http://{host}:{port}/v1/chat/completions")
             print("   Press Ctrl+C to stop\n")
+
             from src.proxy.server import run_proxy
 
-            run_proxy()
+            run_proxy(host=host, port=port, target_url=target_url)
         elif command == "api":
             print("\n🔌 Starting SentineLLM API Server...")
             print("   Listening on: http://127.0.0.1:8000 (localhost only)")
@@ -140,6 +157,10 @@ def print_help():
     print(f"\n{t('help_title')}")
     print(f"{t('help_commands')}")
     print("  proxy          - Start LLM proxy server (recommended)")
+    print("                   Options: --host HOST --port PORT --target-url URL")
+    print(
+        "                   Example: proxy --target-url https://generativelanguage.googleapis.com"
+    )
     print("  api            - Start validation API server")
     print(f"  {t('help_setup')}")
     print(f"  {t('help_config')}")
