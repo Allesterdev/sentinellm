@@ -1,93 +1,106 @@
-# Configuración de OpenClaw en VM Ubuntu
+# OpenClaw Configuration on Ubuntu VM
 
-## Ubicar archivo de configuración
+## Locate configuration file
 
-OpenClaw normalmente guarda su configuración en uno de estos lugares:
+OpenClaw usually stores its configuration in one of these locations:
 
 ```bash
-# Buscar configuración de OpenClaw
+# Search for OpenClaw configuration
 ~/.config/openclaw/config.json
 ~/.openclaw/config.json
 ~/openclaw/config.json
 ```
 
-O puedes buscarla:
+Or you can search for it:
+
 ```bash
 find ~ -name "*config*" -path "*openclaw*" 2>/dev/null
 ```
 
-## Configurar OpenClaw para usar el proxy
+## Configure OpenClaw to use the proxy
 
-1. **Editar la configuración** (ejemplo con nano):
+1. **Edit the configuration** (example with nano):
+
 ```bash
 nano ~/.config/openclaw/config.json
 ```
 
-2. **Cambiar la URL del provider**:
+2. **Change the provider URL**:
 
-**ANTES:**
+**BEFORE:**
+
+<!-- pragma: allowlist secret -->
+
 ```json
 {
   "providers": {
     "openai": {
       "apiUrl": "https://api.openai.com",
-      "apiKey": "sk-tu-clave-real"
+      "apiKey": "YOUR_OPENAI_API_KEY"
     }
   }
 }
 ```
 
-**DESPUÉS:**
+**AFTER:**
+
+<!-- pragma: allowlist secret -->
+
 ```json
 {
   "providers": {
     "openai": {
       "apiUrl": "http://127.0.0.1:8080",
-      "apiKey": "sk-tu-clave-real"
+      "apiKey": "YOUR_OPENAI_API_KEY"
     }
   }
 }
 ```
 
-3. **Guardar y reiniciar OpenClaw**
+3. **Save and restart OpenClaw**
 
-## Verificar que funciona
+## Verify it works
 
-1. **Iniciar el proxy en una terminal:**
+1. **Start the proxy in one terminal:**
+
 ```bash
-cd ~/sentinellm  # o donde esté instalado
+cd ~/sentinellm  # or wherever it's installed
 source venv/bin/activate
 python sentinellm.py proxy
 ```
 
-2. **En otra terminal, ejecutar OpenClaw:**
+2. **In another terminal, run OpenClaw:**
+
 ```bash
 openclaw
 ```
 
-3. **Probar con un mensaje que contenga un secreto:**
+3. **Test with a message containing a secret:**
+
 ```
-Hola, mi API key es sk-proj-45lP0XfR89dVtZ2kL1mV3nQo6jS7bA9cE0hOcSI34wK
+Hello, my API key is sk-proj-45lP0XfR89dVtZ2kL1mV3nQo6jS7bA9cE0hOcSI34wK
 ```
 
-**Resultado esperado:** El proxy debe mostrar un log bloqueando el mensaje y OpenClaw debe recibir un error 403.
+**Expected result:** The proxy should show a log blocking the message and OpenClaw should receive a 403 error.
 
 ## Troubleshooting
 
-### Si sigue sin funcionar:
+### If it still doesn't work:
 
-1. **Verificar que el proxy está escuchando:**
+1. **Verify the proxy is listening:**
+
 ```bash
 curl http://127.0.0.1:8080/health
-# Debe responder: {"status":"healthy","service":"sentinellm-proxy"}
+# Should respond: {"status":"healthy","service":"sentinellm-proxy"}
 ```
 
-2. **Ver logs del proxy:**
-   - Debe aparecer cada request que llega
-   - Si no aparece nada = OpenClaw no está usando el proxy
+2. **Check proxy logs:**
+   - Each incoming request should appear
+   - If nothing appears = OpenClaw is not using the proxy
 
-3. **Revisar variables de entorno:**
+3. **Check environment variables:**
+
 ```bash
 env | grep -i openai
-# Asegurarse que no hay OPENAI_API_URL sobreescribiendo la config
+# Make sure there is no OPENAI_API_URL overriding the config
 ```
