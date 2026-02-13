@@ -5,44 +5,80 @@ This document describes how to integrate SentineLLM with OpenClaw using the HTTP
 ## 🌟 Architecture
 
 ```
-User → OpenClaw → SentineLLM Proxy (8080) → Validation → OpenAI/Claude
+User → OpenClaw → SentineLLM Proxy (8080) → Validation → OpenAI/Claude/Gemini/Ollama
                   ↑ Intercepts here       ↓ Blocks if unsafe
 ```
 
-## 🚀 Quick Start Guide
+## 🚀 Quick Start (Auto-Configuration)
 
-### 1. Start SentineLLM Proxy
+The fastest way — SentineLLM auto-configures OpenClaw for you:
 
 ```bash
 cd /ruta/a/sentinellm
 source .venv/bin/activate
-python sentinellm.py proxy
+
+# Auto-configure OpenClaw (detects config, patches baseUrl)
+sllm agent
+
+# Start the proxy
+sllm proxy openai       # If using OpenAI
+sllm proxy anthropic    # If using Claude
+sllm proxy gemini       # If using Google Gemini
+sllm proxy ollama       # If using Ollama (local)
+```
+
+That's it! SentineLLM automatically:
+
+1. Finds your OpenClaw config (`~/.config/openclaw/config.json5`)
+2. Creates a backup (`.bak`)
+3. Patches `baseUrl` to route through the proxy
+4. Adds `X-Target-URL` header so the proxy knows where to forward
+
+## 🔧 Manual Quick Start
+
+### 1. Start SentineLLM Proxy
+
+```bash
+sllm proxy openai              # Short form
+sllm proxy                     # Interactive provider selection
+python sentinellm.py proxy     # Long form (still works)
 ```
 
 The proxy will be available at `http://localhost:8080`
 
 ### 2. Configure OpenClaw
 
-Edit your OpenClaw configuration to use the proxy instead of the direct API:
+Edit your OpenClaw configuration (`~/.config/openclaw/config.json5`) to use the proxy:
 
-**Before:**
+**Before (OpenClaw JSON5 format):**
 
-```yaml
-llm:
-  provider: openai
-  apiKey: sk-xxx
-  baseUrl: https://api.openai.com/v1
+```json5
+{
+  models: {
+    providers: {
+      openai: {
+        baseUrl: "https://api.openai.com",
+      },
+    },
+  },
+}
 ```
 
 **After:**
 
-```yaml
-llm:
-  provider: openai
-  apiKey: sk-xxx
-  baseUrl: http://localhost:8080/v1 # ← Use the proxy
-  headers:
-    X-Target-URL: https://api.openai.com # ← Real LLM URL
+```json5
+{
+  models: {
+    providers: {
+      openai: {
+        baseUrl: "http://localhost:8080", // ← SentineLLM proxy
+        headers: {
+          "X-Target-URL": "https://api.openai.com", // ← Real LLM URL
+        },
+      },
+    },
+  },
+}
 ```
 
 ### 3. Done!
@@ -224,7 +260,7 @@ cd SentineLLM
 source .venv/bin/activate
 python sentinellm.py proxy
 # Output: 🔒 Starting SentineLLM Proxy Server...
-#         Listening on: http://0.0.0.0:8080
+#         Listening on: http://127.0.0.1:8080
 ```
 
 2. **Terminal 2 - Configure OpenClaw:**

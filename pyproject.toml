@@ -23,11 +23,30 @@ classifiers = [
     "Programming Language :: Python :: 3.12",
 ]
 
+dependencies = [
+    "fastapi>=0.109.0",
+    "uvicorn[standard]>=0.27.0",
+    "pydantic>=2.5.0",
+    "pydantic-settings>=2.1.0",
+    "python-multipart>=0.0.6",
+    "httpx>=0.26.0",
+    "pyyaml>=6.0.1",
+    "python-dotenv>=1.0.0",
+    "questionary>=2.0.1",
+    "structlog>=24.1.0",
+    "python-json-logger>=2.0.7",
+    "ollama>=0.1.6",
+]
+
 [project.urls]
 Homepage = "https://github.com/yourusername/sentinellm"
 Documentation = "https://github.com/yourusername/sentinellm#readme"
 Repository = "https://github.com/yourusername/sentinellm"
 Issues = "https://github.com/yourusername/sentinellm/issues"
+
+[project.scripts]
+sentinellm = "sentinellm:main"
+sllm = "sentinellm:main"
 
 [tool.ruff]
 line-length = 100

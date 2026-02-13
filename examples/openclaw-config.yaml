@@ -1,0 +1,149 @@
+# OpenClaw + SentineLLM Integration Configuration
+#
+# This file shows how to route OpenClaw's LLM traffic through
+# SentineLLM Proxy for security auditing (prompt injection, secret
+# leakage / DLP, entropy analysis).
+#
+# How to use:
+#   1. Start SentineLLM proxy:
+#        cd ~/Proyectos/SentineLLM
+#        source .venv/bin/activate
+#        python sentinellm.py proxy --target-url https://api.openai.com
+#
+#   2. Merge this config into your OpenClaw config.json5:
+#        ~/.config/openclaw/config.json5
+#      or pass it with:
+#        openclaw --config path/to/config.json5
+#
+#   3. Start OpenClaw normally — all LLM traffic now passes through SentineLLM.
+#
+# ============================================================
+# OPTION 1: Anthropic (Claude) via SentineLLM Proxy
+# ============================================================
+# Config to paste in your OpenClaw config.json5:
+#
+# {
+#   env: { ANTHROPIC_API_KEY: "sk-ant-..." },  # pragma: allowlist secret
+#   agents: {
+#     defaults: {
+#       model: { primary: "sentinellm-anthropic/claude-sonnet-4-5" },
+#       models: {
+#         "sentinellm-anthropic/claude-sonnet-4-5": { alias: "Claude (audited)" },
+#       },
+#     },
+#   },
+#   models: {
+#     mode: "merge",
+#     providers: {
+#       "sentinellm-anthropic": {
+#         baseUrl: "http://localhost:8080/v1",
+#         apiKey: "${ANTHROPIC_API_KEY}",
+#         api: "openai-completions",
+#         headers: { "X-Target-URL": "https://api.anthropic.com" },
+#         models: [
+#           {
+#             id: "claude-sonnet-4-5",
+#             name: "Claude Sonnet 4.5 (via SentineLLM)",
+#             reasoning: false,
+#             input: ["text", "image"],
+#             cost: { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3.75 },
+#             contextWindow: 200000,
+#             maxTokens: 8192,
+#           },
+#         ],
+#       },
+#     },
+#   },
+# }
+#
+# ============================================================
+# OPTION 2: OpenAI via SentineLLM Proxy
+# ============================================================
+# Start proxy:  python sentinellm.py proxy --target-url https://api.openai.com
+#
+# {
+#   env: { OPENAI_API_KEY: "sk-..." },  # pragma: allowlist secret
+#   agents: {
+#     defaults: {
+#       model: { primary: "sentinellm-openai/gpt-4o" },
+#       models: {
+#         "sentinellm-openai/gpt-4o": { alias: "GPT-4o (audited)" },
+#       },
+#     },
+#   },
+#   models: {
+#     mode: "merge",
+#     providers: {
+#       "sentinellm-openai": {
+#         baseUrl: "http://localhost:8080/v1",
+#         apiKey: "${OPENAI_API_KEY}",
+#         api: "openai-completions",
+#         models: [
+#           {
+#             id: "gpt-4o",
+#             name: "GPT-4o (via SentineLLM)",
+#             reasoning: false,
+#             input: ["text", "image"],
+#             cost: { input: 2.5, output: 10, cacheRead: 1.25, cacheWrite: 0 },
+#             contextWindow: 128000,
+#             maxTokens: 8192,
+#           },
+#         ],
+#       },
+#     },
+#   },
+# }
+#
+# ============================================================
+# OPTION 3: Ollama (local) via SentineLLM Proxy
+# ============================================================
+# Start proxy:  python sentinellm.py proxy --target-url http://localhost:11434
+#
+# {
+#   agents: {
+#     defaults: {
+#       model: { primary: "sentinellm-ollama/llama3" },
+#     },
+#   },
+#   models: {
+#     mode: "merge",
+#     providers: {
+#       "sentinellm-ollama": {
+#         baseUrl: "http://localhost:8080/v1",
+#         apiKey: "ollama-local",  # pragma: allowlist secret
+#         api: "openai-completions",
+#         models: [
+#           {
+#             id: "llama3",
+#             name: "Llama 3 (via SentineLLM)",
+#             reasoning: false,
+#             input: ["text"],
+#             cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+#             contextWindow: 128000,
+#             maxTokens: 8192,
+#           },
+#         ],
+#       },
+#     },
+#   },
+# }
+
+# ============================================================
+# IMPORTANT NOTES:
+# ============================================================
+#
+# Network flow:
+#   You ↔ OpenClaw Gateway (:18789) → SentineLLM Proxy (:8080) → LLM Provider
+#
+# - SentineLLM MUST be running BEFORE starting OpenClaw
+# - Start order:
+#   1. python sentinellm.py proxy            (listens on :8080)
+#   2. openclaw                              (gateway on :18789, LLM via :8080)
+#
+# - DO NOT use the same port for both services!
+# - To also validate LLM RESPONSES (DLP), set env:
+#     SENTINELLM_VALIDATE_OUTPUT=true  (enabled by default)
+#
+# Troubleshooting:
+#   curl http://localhost:8080/health
+#   → Should respond with {"status":"healthy","service":"sentinellm-proxy"}

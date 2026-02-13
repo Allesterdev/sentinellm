@@ -31,8 +31,9 @@ source venv/bin/activate
 echo "⬆️  Actualizando pip..."
 pip install --upgrade pip -q
 
-# Instalar dependencias
-echo "📚 Instalando dependencias..."
+# Instalar SentineLLM en modo editable + dependencias de desarrollo
+echo "📚 Instalando SentineLLM (editable) + dependencias de desarrollo..."
+pip install -e . -q
 pip install -r requirements-dev.txt -q
 
 # Copiar .env si no existe

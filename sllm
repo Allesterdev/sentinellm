@@ -1,0 +1,34 @@
+#!/usr/bin/env python3
+"""SentineLLM quick launcher — short alias: sllm
+
+Usage:
+    sllm                       # Interactive menu
+    sllm proxy                 # Start proxy (interactive target selection)
+    sllm proxy openai          # Proxy → OpenAI
+    sllm proxy anthropic       # Proxy → Anthropic (Claude)
+    sllm proxy gemini          # Proxy → Google Gemini
+    sllm proxy ollama          # Proxy → Ollama (local)
+    sllm proxy openrouter      # Proxy → OpenRouter
+    sllm proxy URL             # Proxy → custom URL
+    sllm setup                 # Full initial setup
+    sllm config                # Change configuration
+    sllm agent                 # Configure AI agent (OpenClaw, etc.)
+"""
+
+import os
+import sys
+
+from sentinellm import main
+
+# Ensure we can import from the project root
+script_dir = os.path.dirname(os.path.abspath(__file__))
+if script_dir not in sys.path:
+    sys.path.insert(0, script_dir)
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except KeyboardInterrupt:
+        print("\n\n👋 ¡Hasta luego!")
+        sys.exit(0)

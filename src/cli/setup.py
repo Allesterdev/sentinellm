@@ -185,17 +185,32 @@ def run_setup():
         print(t("configure_later"))
         print("   python -m src.cli.config_wizard")
 
+    # Offer to auto-configure an AI agent (OpenClaw, etc.)
+    print("\n" + "=" * 70)
+    configure_agent = questionary.confirm(
+        "🤖 Configure an AI agent (OpenClaw, etc.) to use SentineLLM?",
+        default=True,
+        style=CUSTOM_STYLE,
+    ).ask()
+
+    if configure_agent:
+        from .agent_config import configure_agent_interactive
+
+        configure_agent_interactive()
+    else:
+        print("  💡 You can configure agents later with: sllm agent")
+
     print("\n" + "=" * 70)
     print(t("setup_complete"))
     print("=" * 70)
     print("\n🚀 Next steps:")
-    print("  1. Test the demo: python examples/interactive_demo.py")
-    print("  2. Read docs: cat README.md")
-    print("  3. Start proxy: python sentinellm.py proxy")
+    print("  1. Start proxy:  sllm proxy openai    (or gemini, anthropic, ollama...)")
+    print("  2. Test demo:    sllm demo")
+    print("  3. Read docs:    cat README.md")
     print("\n🔒 To protect OpenClaw or other LLM apps:")
-    print("  • Run: python sentinellm.py proxy")
-    print("  • Change your LLM URL to: http://localhost:8080")
-    print("  • Add header: X-Target-URL: https://api.openai.com")
+    print("  • Run:  sllm proxy")
+    print("  • Or:   sllm agent   (to auto-configure your agent)")
+    print("  • Your agent traffic will be audited automatically")
 
 
 if __name__ == "__main__":

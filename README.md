@@ -54,28 +54,37 @@ cd sentinellm
 python3 -m venv venv
 source venv/bin/activate
 
-# Install dependencies
-pip install -r requirements.txt
+# Install SentineLLM (dependencies + CLI commands)
+pip install .
 ```
+
+This installs all dependencies **and** registers the `sllm` command globally.
+
+> **For developers:** Use `pip install -e .` for editable install (changes take effect immediately).
 
 ### 🎉 Interactive Setup
 
-**Prerequisites:** Complete the installation steps above (virtual environment + dependencies)
-
-SentineLLM includes an interactive CLI for easy configuration:
+After installation, the `sllm` command is available:
 
 ```bash
-# Ensure you're in the virtual environment
-source venv/bin/activate
-
 # Run the interactive setup wizard
-python sentinellm.py
+sllm
 
-# Or use specific commands
-python sentinellm.py setup          # Initial configuration
-python sentinellm.py config         # Change configuration
-python sentinellm.py demo           # Run interactive demo
-python sentinellm.py check-ollama   # Check Ollama status
+# Short commands with provider shortcuts
+sllm proxy openai          # Start proxy → OpenAI
+sllm proxy anthropic       # Start proxy → Anthropic (Claude)
+sllm proxy gemini          # Start proxy → Google Gemini
+sllm proxy ollama          # Start proxy → Ollama (local)
+sllm proxy                 # Interactive provider selection
+
+# Auto-configure AI agents (OpenClaw, etc.)
+sllm agent
+
+# Other commands
+sllm setup                 # Initial configuration
+sllm config                # Change configuration
+sllm demo                  # Run interactive demo
+sllm check-ollama          # Check Ollama status
 ```
 
 The wizard guides you through:
@@ -230,13 +239,23 @@ For complete API reference with all endpoints, models, error codes, and integrat
 **Transparent HTTP proxy** that protects ANY LLM application:
 
 ```bash
-# Start the proxy
-python sentinellm.py proxy
+# Start the proxy with provider shortcuts
+sllm proxy openai          # Proxy to OpenAI
+sllm proxy gemini          # Proxy to Google Gemini
+sllm proxy anthropic       # Proxy to Claude
+sllm proxy ollama          # Proxy to local Ollama
+sllm proxy                 # Interactive provider selection
 ```
 
-Configure your app to use `http://localhost:8080` - works with OpenClaw, LangChain, or any OpenAI-compatible client.
+Configure your app to use `http://localhost:8080` — works with OpenClaw, LangChain, or any LLM client.
 
-\*\*→ [Complete Proxy Documentation](docs/proxy.md)
+To auto-configure an AI agent (OpenClaw, etc.):
+
+```bash
+sllm agent                 # Interactive agent auto-configuration
+```
+
+**→ [Complete Proxy Documentation](docs/proxy.md)**
 
 ---
 
@@ -248,18 +267,22 @@ sentinellm/
 │   ├── core/          # Detection engine (Regex, Entropy, Validators)
 │   ├── filters/       # Prompt injection & LLM detection
 │   ├── cli/           # Interactive CLI & configuration wizard
+│   │   ├── agent_config.py  # Auto-configure AI agents (OpenClaw, etc.)
+│   │   ├── config_wizard.py # Security configuration wizard
+│   │   └── i18n.py          # Internationalization (EN/ES)
 │   ├── utils/         # Constants, config loader, helpers
 │   ├── api/           # REST API endpoints (FastAPI)
 │   │   ├── routes/    # API route handlers
 │   │   ├── models.py  # Pydantic request/response models
 │   │   └── config.py  # API configuration
-│   ├── proxy/         # HTTP proxy server for LLMs
+│   ├── proxy/         # HTTP proxy server for LLMs (multi-provider)
 │   ├── middleware/    # FastAPI middleware (future)
 │   └── models/        # Domain models (future)
 ├── examples/          # Interactive demos & API clients
 ├── tests/             # Unit and integration tests
 ├── config/            # YAML configurations
 ├── sentinellm.py      # Main CLI entry point
+├── sllm               # Short alias launcher
 └── docs/              # Technical documentation
 ```
 
@@ -356,6 +379,9 @@ See [Security CI/CD Guide](docs/security-cicd.md) for detailed documentation.
 - [x] **Bilingual support (EN/ES)**
 - [x] **Circuit breaker & fallback strategies**
 - [x] **REST API with FastAPI**
+- [x] **Multi-provider LLM proxy (OpenAI, Anthropic, Gemini, Ollama, etc.)**
+- [x] **Auto-configuration for AI agents (OpenClaw, etc.)**
+- [x] **CLI shortcut `sllm` with provider aliases**
 - [ ] Logging middleware
 - [ ] Grafana dashboard
 - [ ] Deployment to AWS

@@ -25,7 +25,10 @@ Welcome to the SentineLLM documentation! This guide will help you understand, de
 
 ### Integration Guides
 
+- 🚀 **[Quick Start Script](../scripts/quick-start-openclaw.sh)** - One-command setup for OpenClaw
 - [OpenClaw Integration](openclaw-integration.md) - Connect with OpenClaw Gateway
+- [Port Architecture](PORTS.md) - Understanding port usage and avoiding conflicts ⚠️
+- [OpenClaw Config Example](../examples/openclaw-config.yaml) - Ready-to-use configuration 📋
 - [Advanced API Client](../examples/advanced_api_client.py) - Production-ready Python client
 
 ### Examples
