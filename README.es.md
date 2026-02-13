@@ -327,9 +327,8 @@ SentineLLM implementa un pipeline completo de seguridad:
 - **Escaneo de Dependencias**: Safety + Trivy para vulnerabilidades
 - **Calidad de Código**: Ruff (linting) + mypy (type checking)
 - **Cobertura**:
-  - Actual: **66%** (Python core + API)
-  - Objetivo: **80%** (roadmap Q1 2026)
-  - Mínimo obligatorio: **66%** en CI/CD (incrementando a 80%)
+  - Actual: **81%** (Python core + API + CLI + Proxy)
+  - Mínimo obligatorio: **80%** en CI/CD
 - **Cumplimiento de Licencias**: Verificación automática de licencias
 
 ### Workflows CI/CD
