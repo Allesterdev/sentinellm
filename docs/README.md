@@ -51,13 +51,13 @@ Welcome to the SentineLLM documentation! This guide will help you understand, de
 
 - **Setting up CI/CD?** → Follow [Security Pipeline](security-cicd.md)
 - **Understanding architecture?** → Read [Architecture](architecture.md)
-- **Deploying to production?** → See [API Reference - Production](api-reference.md#configuración-de-producción)
+- **Deploying to production?** → See [API Reference - Production](api-reference.md#-production-deployment)
 
 ### For Product Managers
 
 - **What does it do?** → [README - What is SentineLLM?](../README.md#-what-is-sentinellm)
 - **How does it work?** → [Architecture](architecture.md)
-- **Use cases?** → [API Reference - Integration Examples](api-reference.md#-ejemplos-de-integración)
+- **Use cases?** → [API Reference - Integration Examples](api-reference.md#-integration-examples)
 
 ## 📂 Documentation Structure
 
@@ -66,14 +66,19 @@ docs/
 ├── README.md                      # This file (documentation index)
 ├── api-reference.md               # Complete REST API reference ⭐
 ├── architecture.md                # System architecture
+├── PORTS.md                       # Port architecture and conflicts
+├── proxy.md                       # LLM proxy documentation
 ├── security-cicd.md               # Security pipeline
-└── openclaw-integration.md        # OpenClaw integration guide
+├── security-deployment.md         # Deployment security guide
+├── openclaw-integration.md        # OpenClaw integration guide
+└── openclaw-vm-setup.md           # OpenClaw VM setup guide
 
 examples/
 ├── demo.py                        # Basic demo
 ├── interactive_demo.py            # Interactive CLI
 ├── api_client.py                  # Simple HTTP client
-└── advanced_api_client.py         # Advanced async client ⭐
+├── advanced_api_client.py         # Advanced async client ⭐
+└── openclaw-config.yaml           # OpenClaw config example 📋
 ```
 
 ## 🎯 Use Cases
@@ -205,7 +210,7 @@ We welcome contributions! Areas where we need help:
 
 ## 📞 Support
 
-- **Documentation Issues**: Open an issue on [GitHub](https://github.com/yourusername/SentineLLM/issues)
+- **Documentation Issues**: Open an issue on [GitHub](https://github.com/Allesterdev/sentinellm/issues)
 - **API Questions**: See [API Reference](api-reference.md)
 - **Integration Help**: Check [OpenClaw Integration](openclaw-integration.md)
 

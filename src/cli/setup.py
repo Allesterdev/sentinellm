@@ -122,9 +122,7 @@ def run_setup():
 
     if missing_deps:
         print(f"\n{t('install_deps')}")
-        if questionary.confirm(
-            "¿Instalar dependencias ahora?", default=True, style=CUSTOM_STYLE
-        ).ask():
+        if questionary.confirm(t("install_deps"), default=True, style=CUSTOM_STYLE).ask():
             print(t("installing"))
             subprocess.run(
                 [sys.executable, "-m", "pip", "install", "-r", "requirements.txt"],
@@ -136,22 +134,22 @@ def run_setup():
     ollama_status = check_ollama_installation()
 
     if ollama_status["installed"]:
-        print("  ✓ Ollama está instalado")
+        print(f"  {t('ollama_ready')}")
         if ollama_status["running"]:
-            print("  ✓ Ollama está ejecutándose")
+            print(f"  {t('ollama_running')}")
             if ollama_status["models"]:
                 print(
                     # type: ignore
-                    f"  ✓ Modelos disponibles: {', '.join(ollama_status['models'])}"
+                    f"  {t('ollama_models')} {', '.join(ollama_status['models'])}"
                 )
             else:
-                print("  ⚠️  No hay modelos instalados")
+                print(f"  {t('ollama_no_models')}")
                 if questionary.confirm(
-                    "¿Descargar modelo recomendado (mistral:7b)?",
+                    t("download_model"),
                     default=True,
                     style=CUSTOM_STYLE,
                 ).ask():
-                    print("\n📥 Descargando mistral:7b (~4GB)...")
+                    print(t("downloading"))
                     subprocess.run(["ollama", "pull", "mistral:7b"], check=False)
         else:
             print(f"  {t('ollama_not_running')}")

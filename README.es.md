@@ -2,7 +2,7 @@
 
 > [🇬🇧 English](README.md) | 🇪🇸 **Español**
 
-**AI Security Gateway** - Middleware de seguridad para proteger aplicaciones LLM contra prompt injections y fuga de secretos.
+**AI Security Gateway** — Middleware de seguridad para proteger aplicaciones LLM contra prompt injections y fuga de secretos.
 
 [![Python](https://img.shields.io/badge/Python-3.10%2B-blue)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.109%2B-green)](https://fastapi.tiangolo.com/)
@@ -18,17 +18,19 @@
 
 SentineLLM es un **middleware de seguridad** que intercepta el tráfico entre usuarios y modelos de lenguaje (LLMs) para prevenir:
 
-- **Prompt Injections** (entrada) - Detecta intentos de manipular el comportamiento del modelo
-- **Secret Leakage & DLP** (salida) - Evita la fuga de credenciales, claves API y datos sensibles
+- **Prompt Injections** (entrada) — Detecta intentos de manipular el comportamiento del modelo
+- **Secret Leakage & DLP** (salida) — Evita la fuga de credenciales, claves API y datos sensibles
 
 ### Arquitectura de Defensa en Profundidad
 
 ```
-Usuario → InputFilter → OllamaFilter → [LLM] → OutputFilter → DLPFilter → Response
-           ├─ Regex              │                  ├─ AWS Keys
-           ├─ Entropía           │                  ├─ GitHub Tokens
-           └─ Luhn Check         │                  └─ Credit Cards
-                                 └─ ML Semantic Detection
+
+User → InputFilter → OllamaFilter → [LLM] → OutputFilter → DLPFilter → Response
+├─ Regex │ ├─ AWS Keys
+├─ Entropía │ ├─ GitHub Tokens
+└─ Luhn Check │ └─ Credit Cards
+└─ ML Semantic Detection
+
 ```
 
 ---
@@ -52,28 +54,37 @@ cd sentinellm
 python3 -m venv venv
 source venv/bin/activate
 
-# Instalar dependencias
-pip install -r requirements.txt
+# Instalar SentineLLM (dependencias + comandos CLI)
+pip install .
 ```
+
+Esto instala todas las dependencias **y** registra el comando `sllm` globalmente.
+
+> **Para desarrolladores:** Usa `pip install -e .` para instalación editable (los cambios aplican inmediatamente).
 
 ### 🎉 Configuración Interactiva
 
-**Pre-requisitos:** Completa los pasos de instalación anteriores (entorno virtual + dependencias)
-
-SentineLLM incluye un CLI interactivo para configuración fácil:
+Tras la instalación, el comando `sllm` está disponible:
 
 ```bash
-# Asegúrate de estar en el entorno virtual
-source venv/bin/activate
-
 # Ejecutar el wizard de configuración
-python sentinellm.py
+sllm
 
-# O usar comandos específicos
-python sentinellm.py setup          # Configuración inicial
-python sentinellm.py config         # Cambiar configuración
-python sentinellm.py demo           # Ejecutar demo interactivo
-python sentinellm.py check-ollama   # Ver estado de Ollama
+# Comandos rápidos con atajos de proveedor
+sllm proxy openai          # Iniciar proxy → OpenAI
+sllm proxy anthropic       # Iniciar proxy → Anthropic (Claude)
+sllm proxy gemini          # Iniciar proxy → Google Gemini
+sllm proxy ollama          # Iniciar proxy → Ollama (local)
+sllm proxy                 # Selección interactiva de proveedor
+
+# Auto-configurar agentes IA (OpenClaw, etc.)
+sllm agent
+
+# Otros comandos
+sllm setup                 # Configuración inicial
+sllm config                # Cambiar configuración
+sllm demo                  # Ejecutar demo interactivo
+sllm check-ollama          # Ver estado de Ollama
 ```
 
 El wizard te guía a través de:
@@ -82,7 +93,7 @@ El wizard te guía a través de:
 - 🔧 **Capas de detección** (Regex, LLM)
 - 🤖 **Configuración de Ollama** (Local, VPC, Externo)
 - ⚙️ **Circuit breaker & fallback** settings
-- 🔐 **Detección de secretos** patrones
+- 🔐 **Patrones de detección de secretos**
 
 ### 🎮 Demo Interactivo
 
@@ -118,7 +129,7 @@ SentineLLM proporciona una API REST para integración con aplicaciones externas:
 ### Iniciar el Servidor API
 
 ```bash
-# Usando el CLI (default seguro - solo localhost)
+# Usando el CLI (default seguro — solo localhost)
 python sentinellm.py api
 
 # O para acceso desde red (Docker/clientes remotos)
@@ -223,33 +234,30 @@ Para referencia completa de la API con todos los endpoints, modelos, códigos de
 
 **→ [Ver Documentación Completa de la API](docs/api-reference.md)**
 
-### 🌐 Proxy LLM
+### 🔒 Proxy LLM (Integración Universal)
 
-Servidor proxy HTTP que valida las peticiones antes de enviarlas a cualquier LLM compatible con OpenAI:
+**Proxy HTTP transparente** que protege CUALQUIER aplicación LLM:
 
 ```bash
-python sentinellm.py proxy
+# Iniciar el proxy con atajos de proveedor
+sllm proxy openai          # Proxy a OpenAI
+sllm proxy gemini          # Proxy a Google Gemini
+sllm proxy anthropic       # Proxy a Claude
+sllm proxy ollama          # Proxy a Ollama local
+sllm proxy                 # Selección interactiva de proveedor
 ```
 
-**Configuración para OpenClaw:**
+Configura tu aplicación para usar `http://localhost:8080` — funciona con OpenClaw, LangChain, o cualquier cliente LLM.
 
-```yaml
-# En tu configuración de OpenClaw
-llm:
-  provider: openai
-  baseUrl: http://localhost:8080/v1 # Proxy de SentineLLM
-  headers:
-    X-Target-URL: https://api.openai.com # URL real del LLM
+Para auto-configurar un agente IA (OpenClaw, etc.):
+
+```bash
+sllm agent                 # Auto-configuración interactiva de agentes
 ```
 
-**Funciona con cualquier cliente compatible con OpenAI:**
+**→ [Documentación Completa del Proxy](docs/proxy.md)**
 
-- OpenClaw
-- LangChain
-- OpenAI Python/Node.js SDK
-- Aplicaciones personalizadas
-
-**→ [Documentación del Proxy](docs/proxy.md)**
+---
 
 ## 📁 Estructura del Proyecto
 
@@ -259,18 +267,20 @@ sentinellm/
 │   ├── core/          # Motor de detección (Regex, Entropía, Validadores)
 │   ├── filters/       # Detección de prompt injection y LLM
 │   ├── cli/           # CLI interactivo y wizard de configuración
+│   │   ├── agent_config.py  # Auto-configurar agentes IA (OpenClaw, etc.)
+│   │   ├── config_wizard.py # Wizard de configuración de seguridad
+│   │   └── i18n.py          # Internacionalización (EN/ES)
 │   ├── utils/         # Constantes, cargador de config, helpers
 │   ├── api/           # Endpoints REST API (FastAPI)
 │   │   ├── routes/    # Manejadores de rutas API
 │   │   ├── models.py  # Modelos Pydantic request/response
 │   │   └── config.py  # Configuración de la API
-│   ├── proxy/         # Servidor proxy HTTP para LLMs
-│   ├── middleware/    # FastAPI middleware (futuro)
-│   └── models/        # Modelos de dominio (futuro)
+│   └── proxy/         # Servidor proxy HTTP para LLMs (multi-proveedor)
 ├── examples/          # Demos interactivos y clientes API
 ├── tests/             # Tests unitarios e integración
 ├── config/            # Configuraciones YAML
 ├── sentinellm.py      # Punto de entrada CLI principal
+├── sllm               # Lanzador de atajo rápido
 └── docs/              # Documentación técnica
 ```
 
@@ -306,7 +316,7 @@ sentinellm/
 
 ---
 
-## � Pipeline DevSecOps
+## 🛡️ Pipeline DevSecOps
 
 SentineLLM implementa un pipeline completo de seguridad:
 
@@ -342,7 +352,7 @@ Consulta la [Guía de CI/CD de Seguridad](docs/security-cicd.md) para documentac
 
 ---
 
-## �🛠️ Stack Tecnológico
+## 🛠️ Stack Tecnológico
 
 - **Framework**: FastAPI
 - **Validación**: Pydantic v2
@@ -367,6 +377,9 @@ Consulta la [Guía de CI/CD de Seguridad](docs/security-cicd.md) para documentac
 - [x] **Soporte bilingüe (EN/ES)**
 - [x] **Circuit breaker y estrategias de fallback**
 - [x] **API REST con FastAPI**
+- [x] **Proxy LLM multi-proveedor (OpenAI, Anthropic, Gemini, Ollama, etc.)**
+- [x] **Auto-configuración para agentes IA (OpenClaw, etc.)**
+- [x] **Atajo CLI `sllm` con alias de proveedores**
 - [ ] Middleware de logging
 - [ ] Dashboard Grafana
 - [ ] Deployment en AWS

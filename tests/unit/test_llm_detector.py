@@ -380,7 +380,7 @@ class TestOllamaDetectorExtended:
 
     @patch("httpx.Client.get")
     def test_health_check_success(self, mock_get, test_config):
-        """Test: Health check exitoso"""
+        """Test: Successful health check"""
         test_config.health_check.enabled = True
 
         mock_response = Mock()
@@ -396,7 +396,7 @@ class TestOllamaDetectorExtended:
 
     @patch("httpx.Client.get")
     def test_health_check_failure(self, mock_get, test_config):
-        """Test: Health check fallido"""
+        """Test: Failed health check"""
         test_config.health_check.enabled = True
         mock_get.side_effect = Exception("Connection failed")
 
@@ -407,7 +407,7 @@ class TestOllamaDetectorExtended:
         assert detector.is_healthy is False
 
     def test_circuit_breaker_half_open_state(self, test_config):
-        """Test: Circuit breaker en estado HALF_OPEN"""
+        """Test: Circuit breaker in HALF_OPEN state"""
         detector = OllamaDetector(test_config)
         if detector.circuit_breaker:
             detector.circuit_breaker.state = CircuitState.HALF_OPEN
@@ -416,7 +416,7 @@ class TestOllamaDetectorExtended:
             assert detector.circuit_breaker.can_attempt() is True
 
     def test_endpoint_configuration_vpc(self, test_config):
-        """Test: Configuración de endpoint VPC"""
+        """Test: VPC endpoint configuration"""
         test_config.mode = "vpc"
         test_config.vpc.instances = ["http://ollama1:11434", "http://ollama2:11434"]
 
@@ -426,21 +426,21 @@ class TestOllamaDetectorExtended:
         assert endpoint in test_config.vpc.instances
 
     def test_threat_level_mapping_low(self, test_config):
-        """Test: Mapeo de confianza baja a LOW"""
+        """Test: Low confidence mapping to LOW"""
         detector = OllamaDetector(test_config)
         assert detector._confidence_to_threat_level(0.3, True) == ThreatLevel.LOW
 
     def test_threat_level_mapping_medium(self, test_config):
-        """Test: Mapeo de confianza media a MEDIUM"""
+        """Test: Medium confidence mapping to MEDIUM"""
         detector = OllamaDetector(test_config)
         assert detector._confidence_to_threat_level(0.75, True) == ThreatLevel.MEDIUM
 
     def test_threat_level_mapping_high(self, test_config):
-        """Test: Mapeo de confianza alta a HIGH"""
+        """Test: High confidence mapping to HIGH"""
         detector = OllamaDetector(test_config)
         assert detector._confidence_to_threat_level(0.95, True) == ThreatLevel.HIGH
 
     def test_threat_level_no_injection(self, test_config):
-        """Test: No injection retorna NONE"""
+        """Test: No injection returns NONE"""
         detector = OllamaDetector(test_config)
         assert detector._confidence_to_threat_level(0.95, False) == ThreatLevel.NONE

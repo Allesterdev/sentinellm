@@ -19,8 +19,8 @@ questionary>=2.0.1
 structlog>=24.1.0
 python-json-logger>=2.0.7
 
-# Ollama Integration (opcional)
+# Ollama Integration (optional)
 ollama>=0.1.6
 
-# AWS SDK (futuro despliegue)
+# AWS SDK (future deployment)
 # boto3>=1.34.0

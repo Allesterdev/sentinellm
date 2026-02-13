@@ -1,67 +1,67 @@
 #!/bin/bash
-# Script de setup para desarrollo local
+# Development setup script for SentineLLM
 
 set -e
 
-echo "🛡️  SentineLLM - Setup de Desarrollo"
+echo "🛡️  SentineLLM - Development Setup"
 echo "========================================"
 echo ""
 
-# Verificar Python
+# Check Python
 if ! command -v python3 &> /dev/null; then
-    echo "❌ Python 3 no está instalado"
+    echo "❌ Python 3 is not installed"
     exit 1
 fi
 
-echo "✓ Python $(python3 --version) encontrado"
+echo "✓ Python $(python3 --version) found"
 
-# Crear entorno virtual si no existe
+# Create virtual environment if it doesn't exist
 if [ ! -d "venv" ]; then
-    echo "📦 Creando entorno virtual..."
+    echo "📦 Creating virtual environment..."
     python3 -m venv venv
 else
-    echo "✓ Entorno virtual ya existe"
+    echo "✓ Virtual environment already exists"
 fi
 
-# Activar entorno virtual
-echo "🔧 Activando entorno virtual..."
+# Activate virtual environment
+echo "🔧 Activating virtual environment..."
 source venv/bin/activate
 
-# Actualizar pip
-echo "⬆️  Actualizando pip..."
+# Upgrade pip
+echo "⬆️  Upgrading pip..."
 pip install --upgrade pip -q
 
-# Instalar SentineLLM en modo editable + dependencias de desarrollo
-echo "📚 Instalando SentineLLM (editable) + dependencias de desarrollo..."
+# Install SentineLLM in editable mode + dev dependencies
+echo "📚 Installing SentineLLM (editable) + dev dependencies..."
 pip install -e . -q
 pip install -r requirements-dev.txt -q
 
-# Copiar .env si no existe
+# Copy .env if it doesn't exist
 if [ ! -f ".env" ]; then
-    echo "📝 Creando archivo .env..."
+    echo "📝 Creating .env file..."
     cp .env.example .env
 else
-    echo "✓ Archivo .env ya existe"
+    echo "✓ .env file already exists"
 fi
 
-# Instalar pre-commit hooks
-echo "🪝 Instalando pre-commit hooks..."
+# Install pre-commit hooks
+echo "🪝 Installing pre-commit hooks..."
 pre-commit install
 
-# Ejecutar tests
+# Run tests
 echo ""
-echo "🧪 Ejecutando tests..."
+echo "🧪 Running tests..."
 pytest -v --tb=short
 
 echo ""
-echo "✅ Setup completado exitosamente!"
+echo "✅ Setup completed successfully!"
 echo ""
-echo "Para activar el entorno virtual:"
+echo "To activate the virtual environment:"
 echo "  source venv/bin/activate"
 echo ""
-echo "Para ejecutar tests:"
+echo "To run tests:"
 echo "  pytest"
 echo ""
-echo "Para ejecutar el demo:"
-echo "  python examples/demo.py"
+echo "To start the proxy:"
+echo "  sllm proxy openai"
 echo ""

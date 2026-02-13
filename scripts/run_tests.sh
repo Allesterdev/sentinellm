@@ -1,5 +1,5 @@
 #!/bin/bash
-# Script para ejecutar todos los tests con cobertura
+# Run all tests with coverage
 
 set -e
 
@@ -7,13 +7,13 @@ echo "🧪 SentineLLM - Test Suite"
 echo "============================"
 echo ""
 
-# Activar entorno virtual si existe
+# Activate virtual environment if it exists
 if [ -d "venv" ]; then
     source venv/bin/activate
 fi
 
-# Ejecutar tests con cobertura
-echo "📊 Ejecutando tests con cobertura..."
+# Run tests with coverage
+echo "📊 Running tests with coverage..."
 pytest -v \
     --cov=src \
     --cov-report=term-missing \
@@ -21,7 +21,7 @@ pytest -v \
     --tb=short
 
 echo ""
-echo "✅ Tests completados"
+echo "✅ Tests completed"
 echo ""
-echo "📈 Reporte de cobertura generado en: htmlcov/index.html"
+echo "📈 Coverage report generated at: htmlcov/index.html"
 echo ""

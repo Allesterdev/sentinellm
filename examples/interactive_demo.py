@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Demo Interactiva de SentineLLM - Simula middleware de filtrado para LLMs
-Arquitectura de 3 capas: Regex (rápido) → Ollama (profundo) → LLM
+SentineLLM Interactive Demo - Simulates filtering middleware for LLMs
+3-layer architecture: Regex (fast) → Ollama (deep) → LLM
 """
 
 import sys
@@ -14,11 +14,11 @@ from src.filters.prompt_injection import PromptInjectionDetector
 from src.utils.config_loader import get_config
 from src.utils.constants import ThreatLevel
 
-# Añadir el directorio raíz al path
+# Add root directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 
-# Colores para terminal
+# Terminal colors
 RED = "\033[91m"
 YELLOW = "\033[93m"
 GREEN = "\033[92m"
@@ -30,7 +30,7 @@ RESET = "\033[0m"
 
 
 def print_header():
-    """Imprime el header del demo"""
+    """Print the demo header."""
     print(f"\n{BLUE}{'=' * 80}")
     print(f"{BOLD}{t('demo_title')}{RESET}")
     print(f"{BLUE}{'=' * 80}{RESET}")
@@ -43,7 +43,7 @@ def print_header():
         }.{RESET}"
     )
 
-    # Mostrar configuración
+    # Show configuration
     try:
         config = get_config()
         llm_enabled = config.prompt_injection.layers and any(
@@ -66,22 +66,22 @@ def simulate_llm_request(
     ollama_detector: OllamaDetector | None = None,
 ) -> dict:
     """
-    Simula una petición a un LLM con filtrado de seguridad en 3 capas.
+    Simulate a request to an LLM with 3-layer security filtering.
 
     Args:
-        prompt: Prompt del usuario
-        secret_detector: Detector de secretos
-        injection_detector: Detector de prompt injection (regex)
-        ollama_detector: Detector LLM profundo (opcional)
+        prompt: User prompt
+        secret_detector: Secret detector
+        injection_detector: Prompt injection detector (regex)
+        ollama_detector: Deep LLM detector (optional)
 
     Returns:
-        Dict con estado de la petición
+        Dict with request status
     """
     print(f"{CYAN}{t('intercepting')}{RESET}")
     print(f"{BOLD}{t('user_says')}{RESET} {prompt[:100]}{'...' if len(prompt) > 100 else ''}\n")
 
     # =========================================================================
-    # CAPA 1: Escaneo rápido con Regex (Prompt Injection)
+    # LAYER 1: Fast scan with Regex (Prompt Injection)
     # =========================================================================
     print(f"{BLUE}{t('layer_1')}{RESET}")
     injection_result = injection_detector.scan(prompt)
@@ -115,7 +115,7 @@ def simulate_llm_request(
     print(f"{GREEN}{t('no_malicious')}{RESET}\n")
 
     # =========================================================================
-    # CAPA 2: Análisis semántico profundo con Ollama (si está disponible)
+    # LAYER 2: Deep semantic analysis with Ollama (if available)
     # =========================================================================
     if ollama_detector:
         print(f"{BLUE}{t('layer_2')}{RESET}")
@@ -165,7 +165,7 @@ def simulate_llm_request(
             print(f"{YELLOW}   {t('ollama_regex_only')}{RESET}\n")
 
     # =========================================================================
-    # CAPA 3: Escaneo de secretos filtrados
+    # LAYER 3: Secret leakage scan
     # =========================================================================
     print(f"{BLUE}{t('layer_3')}{RESET}")
     secret_results = secret_detector.scan(prompt)
@@ -183,7 +183,7 @@ def simulate_llm_request(
             "injection_detected": False,
         }
 
-    # Hay secretos - BLOQUEAR
+    # Secrets found - BLOCK
     print(f"{RED}{t('alert_secrets').format(len(secret_results))}{RESET}")
     print(f"{RED}{t('blocked_request')}{RESET}\n")
 
@@ -216,11 +216,11 @@ def simulate_llm_request(
 
 
 def demo_scenarios():
-    """Ejecuta varios escenarios de prueba"""
+    """Run several test scenarios."""
     secret_detector = SecretDetector()
     injection_detector = PromptInjectionDetector()
 
-    # Intentar inicializar Ollama si está configurado
+    # Try to initialize Ollama if configured
     ollama_detector = None
     try:
         config = get_config()
@@ -292,11 +292,11 @@ def demo_scenarios():
         print(f"{CYAN}{'─' * 80}{RESET}")
         input(f"\n{YELLOW}{t('press_enter')}{RESET}\n")
 
-    # Cerrar ollama si se inicializó
+    # Close ollama if initialized
     if ollama_detector:
         ollama_detector.close()
 
-    # Resumen final
+    # Final summary
     print(f"\n{BOLD}{BLUE}{'═' * 80}")
     print(f"{t('security_summary'):^80}")
     print(f"{'═' * 80}{RESET}\n")
@@ -315,7 +315,7 @@ def demo_scenarios():
 
 
 def interactive_mode():
-    """Modo interactivo para probar prompts personalizados"""
+    """Interactive mode to test custom prompts."""
     print(f"\n{BOLD}{CYAN}╔═══════════════════════════════════════════════════════════════╗")
     print(f"║                    {t('interactive_mode')}                        ║")
     print(f"╚═══════════════════════════════════════════════════════════════╝{RESET}\n")
@@ -326,7 +326,7 @@ def interactive_mode():
     secret_detector = SecretDetector()
     injection_detector = PromptInjectionDetector()
 
-    # Intentar inicializar Ollama
+    # Try to initialize Ollama
     ollama_detector = None
     try:
         config = get_config()
@@ -365,7 +365,7 @@ def interactive_mode():
         except Exception as e:
             print(f"{RED}Error: {e}{RESET}\n")
 
-    # Cerrar ollama si se inicializó
+    # Close ollama if initialized
     if ollama_detector:
         ollama_detector.close()
 
@@ -373,7 +373,7 @@ def interactive_mode():
 
 
 def main():
-    """Punto de entrada principal"""
+    """Main entry point."""
     print_header()
 
     while True:

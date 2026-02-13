@@ -41,9 +41,9 @@ SentineLLM is an **AI Security Gateway** that implements the **Defense in Depth*
                          ▼
 ┌─────────────────────────────────────────────────────────────┐
 │                  Output Filters (DLP)                        │
-│  ┌──────────────┐  ┌──────────────┐  ┌─────────────────┐   │
-│  │Secret Detect │→ │  Sanitizer   │→ │ Compliance Log  │   │
-│  └──────────────┘  └──────────────┘  └─────────────────┘   │
+│  ┌──────────────┐  ┌──────────────┐                         │
+│  │Secret Detect │→ │  DLP Filter  │                         │
+│  └──────────────┘  └──────────────┘                         │
 └────────────────────────┬────────────────────────────────────┘
                          │
                          ▼
@@ -91,11 +91,11 @@ SentineLLM is an **AI Security Gateway** that implements the **Defense in Depth*
 ### Threat Levels (ThreatLevel Enum)
 
 ```python
-NONE = 0       # No threat
-LOW = 1        # Suspicious pattern, low entropy
-MEDIUM = 2     # Partial regex match
-HIGH = 3       # Exact match (AKIA, Bearer)
-CRITICAL = 4   # Confirmed valid secret + high entropy
+NONE = "none"         # No threat
+LOW = "low"           # Suspicious pattern, low entropy
+MEDIUM = "medium"     # Partial regex match
+HIGH = "high"         # Exact match (AKIA, Bearer)
+CRITICAL = "critical" # Confirmed valid secret + high entropy
 ```
 
 ### Decision Matrix
@@ -171,7 +171,7 @@ src/core/validator.py   95%    (37 stmts, 2 miss)
 
 - **Single Responsibility:** Each module has a single responsibility
 - **Open/Closed:** Easy to add new detectors without modifying existing ones
-- **Liskov Substitution:** Abstract BaseFilter for interchangeable filters
+- **Liskov Substitution:** Composable detection layers with consistent interfaces
 - **Interface Segregation:** Small and specific interfaces
 - **Dependency Inversion:** Depend on abstractions, not implementations
 
@@ -186,37 +186,43 @@ src/core/validator.py   95%    (37 stmts, 2 miss)
 
 ## 🚀 Technical Roadmap
 
-### Phase 1: Core Detection ✅ (CURRENT)
+### Phase 1: Core Detection ✅
 
 - [x] Project structure
 - [x] Regex detection
 - [x] Entropy analysis
 - [x] Luhn/AWS validators
-- [x] Tests with 98% coverage
+- [x] Tests with coverage
 
-### Phase 2: REST API (Week 2)
+### Phase 2: REST API ✅
 
-- [ ] FastAPI endpoints
-- [ ] Interception middleware
-- [ ] Request/Response schemas (Pydantic)
-- [ ] Health checks
+- [x] FastAPI endpoints
+- [x] Request/Response schemas (Pydantic)
+- [x] Health checks
 - [ ] Rate limiting
 
-### Phase 3: ML Integration (Week 3-4)
+### Phase 3: ML Integration ✅
 
-- [ ] Local Ollama setup
-- [ ] Prompt injection detection
-- [ ] Semantic analysis
+- [x] Local Ollama setup
+- [x] Prompt injection detection (regex + LLM)
+- [x] Semantic analysis
 - [ ] Fine-tuning with OWASP datasets
 
-### Phase 4: Observability (Week 5)
+### Phase 4: LLM Proxy ✅
+
+- [x] Multi-provider proxy (OpenAI, Anthropic, Gemini, Ollama)
+- [x] Input + Output (DLP) validation
+- [x] Agent auto-configuration (OpenClaw, etc.)
+- [x] CLI shortcuts (`sllm proxy openai`, etc.)
+
+### Phase 5: Observability (Planned)
 
 - [ ] Structured logging (JSON)
 - [ ] Prometheus metrics
 - [ ] Grafana dashboards
 - [ ] Alerting (PagerDuty/Slack)
 
-### Phase 5: Cloud Deployment (Week 6-7)
+### Phase 6: Cloud Deployment (Planned)
 
 - [ ] Optimized Dockerfile
 - [ ] Terraform for AWS

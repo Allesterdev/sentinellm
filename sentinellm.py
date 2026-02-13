@@ -111,7 +111,7 @@ def _interactive_proxy():
         questionary.Choice("🤝 Together AI", value="together"),
         questionary.Choice("🔷 Mistral AI", value="mistral"),
         questionary.Choice("🐋 DeepSeek", value="deepseek"),
-        questionary.Choice("📝 URL personalizada", value="custom"),
+        questionary.Choice("📝 Custom URL", value="custom"),
     ]
 
     choice = questionary.select(
@@ -124,7 +124,7 @@ def _interactive_proxy():
 
     if choice == "custom":
         target_url = questionary.text(
-            "URL del proveedor LLM:",
+            "LLM provider URL:",
             default="https://api.example.com",
         ).ask()
     else:
