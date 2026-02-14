@@ -75,13 +75,13 @@ class TestFindAgentConfig:
         config_file = tmp_path / "config.json5"
         config_file.write_text("{}")
 
-        with patch.dict(os.environ, {"OPENCLAW_CONFIG": str(config_file)}):
+        with patch.dict(os.environ, {"OPENCLAW_CONFIG_PATH": str(config_file)}):
             result = _find_agent_config("openclaw")
             assert result == config_file
 
     def test_env_var_nonexistent(self):
         """Env var pointing to nonexistent file falls through to path search."""
-        with patch.dict(os.environ, {"OPENCLAW_CONFIG": "/nonexistent/config.json"}):
+        with patch.dict(os.environ, {"OPENCLAW_CONFIG_PATH": "/nonexistent/config.json"}):
             # Will fall through to path search, which also won't find anything
             _find_agent_config("openclaw")
             # Either None or found in default paths
