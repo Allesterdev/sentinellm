@@ -43,6 +43,8 @@ KNOWN_AGENTS: dict[str, dict[str, Any]] = {
             "~/.config/openclaw/config.json",
             "~/.openclaw/config.json5",
             "~/.openclaw/config.json",
+            "~/openclaw/config.json",
+            "/usr/local/lib/node_modules/openclaw/config.json",
         ],
         "env_var": "OPENCLAW_CONFIG",
         "url_field": "baseUrl",
