@@ -2,12 +2,16 @@
 Configuration loader for SentineLLM security settings
 """
 
+import logging
 import os
+import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 import yaml
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -21,7 +25,10 @@ class OllamaLocalConfig:
     @property
     def endpoint(self) -> str:
         """Get full endpoint URL"""
-        return f"{self.host}:{self.port}"
+        host = self.host
+        if not host.startswith(("http://", "https://")):
+            host = f"http://{host}"
+        return f"{host}:{self.port}"
 
 
 @dataclass
@@ -48,11 +55,65 @@ class OllamaExternalConfig:
         return os.getenv(self.api_key_env)
 
 
+def _detect_ollama_model() -> str | None:
+    """Auto-detect the first available Ollama model.
+
+    Calls ``ollama list`` and returns the first model name,
+    or *None* if Ollama is not installed / not running.
+    """
+    try:
+        result = subprocess.run(
+            ["ollama", "list"],  # noqa: S607
+            capture_output=True,
+            text=True,
+            timeout=3,
+            check=False,
+        )
+        if result.returncode == 0:
+            lines = result.stdout.strip().split("\n")[1:]  # skip header
+            for line in lines:
+                parts = line.split()
+                if parts:
+                    return parts[0]
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        pass
+    return None
+
+
+def _resolve_ollama_model(configured: str) -> str:
+    """Resolve the Ollama model name.
+
+    Priority:
+      1. ``SENTINELLM_OLLAMA_MODEL`` env var
+      2. Configured value (from YAML) — unless it is ``"auto"``
+      3. Auto-detect from ``ollama list``
+      4. Fallback to ``"llama3.2:3b"``
+    """
+    # 1. Env var always wins
+    env_model = os.environ.get("SENTINELLM_OLLAMA_MODEL")
+    if env_model:
+        logger.info("Ollama model from env: %s", env_model)
+        return env_model
+
+    # 2. Explicit config (not "auto")
+    if configured and configured != "auto":
+        return configured
+
+    # 3. Auto-detect
+    detected = _detect_ollama_model()
+    if detected:
+        logger.info("Ollama model auto-detected: %s", detected)
+        return detected
+
+    # 4. Safe fallback
+    return "llama3.2:3b"
+
+
 @dataclass
 class OllamaModelConfig:
     """Ollama model configuration"""
 
-    name: str = "mistral:7b"
+    name: str = "auto"
     prompt_template: str = ""
 
 
@@ -190,6 +251,9 @@ class SecurityConfig:
             model_config = OllamaModelConfig(name=model_data)
         else:
             model_config = OllamaModelConfig(**model_data)
+
+        # Resolve "auto" / env var to a real model name
+        model_config.name = _resolve_ollama_model(model_config.name)
 
         ollama = OllamaConfig(
             mode=ollama_data.get("mode", "local"),

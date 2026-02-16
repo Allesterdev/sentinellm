@@ -91,6 +91,11 @@ PROVIDER_PRESETS: dict[str, dict[str, str]] = {
         "base_url": "https://generativelanguage.googleapis.com",
         "header": "x-goog-api-key",
     },
+    "google": {
+        "name": "Google Gemini",
+        "base_url": "https://generativelanguage.googleapis.com",
+        "header": "x-goog-api-key",
+    },
     "ollama": {
         "name": "Ollama (local)",
         "base_url": "http://localhost:11434",
@@ -111,6 +116,17 @@ PROVIDER_PRESETS: dict[str, dict[str, str]] = {
         "base_url": "",
         "header": None,
     },
+}
+
+# OpenClaw API type mapping (our provider name → OpenClaw ModelApi enum)
+OPENCLAW_API_MAP: dict[str, str] = {
+    "openai": "openai-responses",
+    "anthropic": "anthropic",
+    "gemini": "google-generative-ai",
+    "google": "google-generative-ai",
+    "ollama": "openai-chat",
+    "openrouter": "openai-chat",
+    "azure": "openai-chat",
 }
 
 
@@ -184,11 +200,13 @@ def _patch_openclaw_config(
 ) -> dict[str, Any]:
     """Patch an OpenClaw config dict to route through SentineLLM.
 
-    Adds/updates a provider entry with:
-      - baseUrl pointing to SentineLLM proxy
-      - x-sentinellm-target header with the original URL
+    Sets ``models.providers.<provider>.baseUrl`` to the SentineLLM proxy
+    URL.  The proxy forwards requests to the original provider endpoint
+    (configured via ``SENTINELLM_TARGET_URL`` env var at proxy startup).
+
+    Only writes fields accepted by OpenClaw's strict Zod schema:
+    ``baseUrl`` and ``api``.
     """
-    # Ensure models.providers exists
     if "models" not in config_data:
         config_data["models"] = {}
     if "providers" not in config_data["models"]:
@@ -196,23 +214,18 @@ def _patch_openclaw_config(
 
     providers = config_data["models"]["providers"]
 
-    # Create or update the provider entry
     if provider_name not in providers:
         providers[provider_name] = {}
 
     provider = providers[provider_name]
 
-    # Save original URL as fallback info
-    if "baseUrl" in provider and provider["baseUrl"] != proxy_url:
-        provider["_original_baseUrl"] = provider["baseUrl"]
-
     # Point to SentineLLM proxy
     provider["baseUrl"] = proxy_url
 
-    # Add target header so the proxy knows where to forward
-    if "headers" not in provider:
-        provider["headers"] = {}
-    provider["headers"]["X-Target-URL"] = original_base_url
+    # Set API type if known and not already configured
+    api_type = OPENCLAW_API_MAP.get(provider_name)
+    if api_type and "api" not in provider:
+        provider["api"] = api_type
 
     return config_data
 
@@ -280,40 +293,6 @@ def configure_agent_interactive(
     if selected_agent == "skip" or selected_agent is None:
         return None
 
-    # ── Choose provider ─────────────────────────────────────────────────
-    print(f"\n{t('agent_select_provider')}")
-
-    provider_choices = []
-    for pid, preset in PROVIDER_PRESETS.items():
-        provider_choices.append(questionary.Choice(f"{preset['name']}", value=pid))
-
-    selected_provider = questionary.select(
-        t("agent_provider_question"),
-        choices=provider_choices,
-        style=CUSTOM_STYLE,
-    ).ask()
-
-    if selected_provider is None:
-        return None
-
-    preset = PROVIDER_PRESETS[selected_provider]
-
-    # Get the target URL (original LLM endpoint)
-    if selected_provider == "custom":
-        target_url = questionary.text(
-            t("agent_custom_url"),
-            default="https://api.example.com",
-            style=CUSTOM_STYLE,
-        ).ask()
-    elif selected_provider == "azure":
-        resource = questionary.text(
-            t("agent_azure_resource"),
-            style=CUSTOM_STYLE,
-        ).ask()
-        target_url = f"https://{resource}.openai.azure.com"
-    else:
-        target_url = preset["base_url"]
-
     # ── Proxy settings ──────────────────────────────────────────────────
     change_proxy = questionary.confirm(
         t("agent_change_proxy").format(proxy_url=proxy_url),
@@ -335,77 +314,165 @@ def configure_agent_interactive(
         proxy_port = int(proxy_port_str)
         proxy_url = _get_proxy_url(proxy_host, proxy_port)
 
-    # ── Apply configuration ─────────────────────────────────────────────
+    # ── Manual mode ─────────────────────────────────────────────────────
     if selected_agent == "manual":
-        # Just print instructions
+        # For manual, pick a single provider and print instructions
+        selected_provider = _select_single_provider()
+        if selected_provider is None:
+            return None
+        preset = PROVIDER_PRESETS[selected_provider]
+        target_url = _resolve_target_url(selected_provider, preset)
         _print_manual_instructions(target_url, proxy_url, preset)
         return {"mode": "manual", "target_url": target_url, "proxy_url": proxy_url}
 
+    # ── Resolve config path ─────────────────────────────────────────────
     agent_def = KNOWN_AGENTS[selected_agent]
     config_path = detected.get(selected_agent)
 
     if not config_path:
-        # Config file doesn't exist — create it
         create_new = questionary.confirm(
             t("agent_create_config").format(agent=agent_def["name"]),
             default=True,
             style=CUSTOM_STYLE,
         ).ask()
         if not create_new:
-            _print_manual_instructions(target_url, proxy_url, preset)
             return None
 
-        # Use first known path
         config_path = Path(agent_def["config_paths"][0]).expanduser()
         config_path.parent.mkdir(parents=True, exist_ok=True)
         config_data: dict[str, Any] = {}
     else:
-        # Read existing config
         config_data = _read_json5_file(config_path)
 
-    # Choose a provider name/key for the config
-    provider_name = questionary.text(
-        t("agent_provider_name"),
-        default=selected_provider,
-        style=CUSTOM_STYLE,
-    ).ask()
-
+    # ── OpenClaw: multi-provider selection ──────────────────────────────
     if selected_agent == "openclaw":
+        # Detect providers already configured in the JSON
+        existing_providers = _detect_existing_providers(config_data)
+
+        # Build multi-select with all available providers
+        # (skip "google" alias and "custom" from the checkbox list)
+        provider_choices = []
+        skip_ids = {"google", "custom"}
+        for pid, preset in PROVIDER_PRESETS.items():
+            if pid in skip_ids:
+                continue
+            already = pid in existing_providers
+            status = "✅ " if already else ""
+            provider_choices.append(
+                questionary.Choice(
+                    f"{status}{preset['name']} ({preset['base_url']})",
+                    value=pid,
+                    checked=already,
+                )
+            )
+
+        print(f"\n{t('agent_select_provider')}")
+        selected_providers = questionary.checkbox(
+            t("agent_multi_provider_question"),
+            choices=provider_choices,
+            style=CUSTOM_STYLE,
+        ).ask()
+
+        if not selected_providers:
+            print("  ⏭️  No providers selected.")
+            return None
+
         # Backup original config
         backup_path = config_path.with_suffix(config_path.suffix + ".bak")
         if config_path.exists():
             shutil.copy2(config_path, backup_path)
             print(f"  📋 {t('agent_backup')} {backup_path}")
 
-        # Patch config
-        config_data = _patch_openclaw_config(
-            config_data,
-            provider_name,
-            target_url,
-            proxy_url,
-        )
+        # Patch all selected providers
+        for provider_id in selected_providers:
+            preset = PROVIDER_PRESETS[provider_id]
+            config_data = _patch_openclaw_config(
+                config_data,
+                provider_id,
+                preset["base_url"],
+                proxy_url,
+            )
+            print(f"  🔌 {preset['name']} → {proxy_url}")
+
         _write_json_file(config_path, config_data)
         print(f"\n  ✅ {t('agent_config_saved')} {config_path}")
 
-    else:
-        # For other agents, print manual instructions
-        _print_manual_instructions(target_url, proxy_url, preset)
+        # Summary for multi-provider
+        _print_multi_provider_summary(
+            agent_name=agent_def["name"],
+            providers=selected_providers,
+            proxy_url=proxy_url,
+        )
 
-    # ── Summary ─────────────────────────────────────────────────────────
+        return {
+            "agent": selected_agent,
+            "providers": selected_providers,
+            "proxy_url": proxy_url,
+            "config_path": str(config_path),
+        }
+
+    # ── Other agents: single provider ───────────────────────────────────
+    selected_provider = _select_single_provider()
+    if selected_provider is None:
+        return None
+    preset = PROVIDER_PRESETS[selected_provider]
+    target_url = _resolve_target_url(selected_provider, preset)
+    _print_manual_instructions(target_url, proxy_url, preset)
+
     _print_agent_summary(
         agent_name=agent_def["name"],
-        provider_name=provider_name,
+        provider_name=selected_provider,
         target_url=target_url,
         proxy_url=proxy_url,
     )
 
     return {
         "agent": selected_agent,
-        "provider": provider_name,
+        "provider": selected_provider,
         "target_url": target_url,
         "proxy_url": proxy_url,
-        "config_path": str(config_path),
+        "config_path": str(config_path) if config_path else None,
     }
+
+
+def _select_single_provider() -> str | None:
+    """Show a single-select provider picker. Returns provider id or None."""
+    provider_choices = []
+    for pid, preset in PROVIDER_PRESETS.items():
+        if pid == "google":  # skip alias
+            continue
+        provider_choices.append(questionary.Choice(f"{preset['name']}", value=pid))
+
+    return questionary.select(
+        t("agent_provider_question"),
+        choices=provider_choices,
+        style=CUSTOM_STYLE,
+    ).ask()
+
+
+def _resolve_target_url(provider_id: str, preset: dict[str, str]) -> str:
+    """Resolve the target URL for a provider, prompting if needed."""
+    if provider_id == "custom":
+        return questionary.text(
+            t("agent_custom_url"),
+            default="https://api.example.com",
+            style=CUSTOM_STYLE,
+        ).ask()
+    if provider_id == "azure":
+        resource = questionary.text(
+            t("agent_azure_resource"),
+            style=CUSTOM_STYLE,
+        ).ask()
+        return f"https://{resource}.openai.azure.com"
+    return preset["base_url"]
+
+
+def _detect_existing_providers(config_data: dict[str, Any]) -> set[str]:
+    """Detect which providers are already configured in an OpenClaw config."""
+    try:
+        return set(config_data.get("models", {}).get("providers", {}).keys())
+    except (AttributeError, TypeError):
+        return set()
 
 
 def _print_manual_instructions(
@@ -420,22 +487,22 @@ def _print_manual_instructions(
     print(f"\n  {t('agent_manual_step1')}")
     print(f"    baseUrl: {proxy_url}")
     print(f"\n  {t('agent_manual_step2')}")
-    print(f"    X-Target-URL: {target_url}")
+    print(f"    SENTINELLM_TARGET_URL={target_url}")
     print(f"\n  {t('agent_manual_example')}")
     print(f"""
-    // config.json5  (OpenClaw example)
+    // openclaw.json — models.providers section
     {{
       "models": {{
         "providers": {{
           "{preset["name"].lower().split()[0]}": {{
-            "baseUrl": "{proxy_url}",
-            "headers": {{
-              "X-Target-URL": "{target_url}"
-            }}
+            "baseUrl": "{proxy_url}"
           }}
         }}
       }}
     }}
+
+    # Start SentineLLM proxy:
+    SENTINELLM_TARGET_URL={target_url} sllm proxy --port 8080
 """)
 
 
@@ -456,9 +523,37 @@ def _print_agent_summary(
     print(f"\n  {t('agent_summary_flow')}")
     print(f"    {agent_name} → SentineLLM ({proxy_url}) → {target_url}")
     print(f"\n  {t('agent_summary_start')}")
-    print(f"    sllm proxy {provider_name}")
+    print(f"    SENTINELLM_TARGET_URL={target_url} sllm proxy")
     print(f"    # {t('agent_summary_or')}")
-    print(f"    python sentinellm.py proxy -t {target_url}")
+    print(f"    SENTINELLM_TARGET_URL={target_url} python sentinellm.py proxy")
+    print(f"{'=' * 70}\n")
+
+
+def _print_multi_provider_summary(
+    agent_name: str,
+    providers: list[str],
+    proxy_url: str,
+) -> None:
+    """Print summary for multi-provider configuration."""
+    print(f"\n{'=' * 70}")
+    print(t("agent_summary_title"))
+    print(f"{'=' * 70}")
+    print(f"  🤖 {t('agent_summary_agent')} {agent_name}")
+    print(f"  🛡️  {t('agent_summary_proxy')} {proxy_url}")
+    print("\n  Configured providers:")
+    for pid in providers:
+        preset = PROVIDER_PRESETS.get(pid, {})
+        name = preset.get("name", pid)
+        base_url = preset.get("base_url", "?")
+        api_type = OPENCLAW_API_MAP.get(pid, "?")
+        print(f"    🔌 {name} (api: {api_type})")
+        print(f"       {agent_name} → SentineLLM ({proxy_url}) → {base_url}")
+    print(f"\n  {t('agent_summary_start')}")
+    print("    # For each provider, start the proxy with its target:")
+    for pid in providers:
+        preset = PROVIDER_PRESETS.get(pid, {})
+        base_url = preset.get("base_url", "")
+        print(f"    SENTINELLM_TARGET_URL={base_url} sllm proxy")
     print(f"{'=' * 70}\n")
 
 
@@ -466,15 +561,22 @@ def _print_agent_summary(
 
 
 def quick_configure_openclaw(
-    provider: str = "openai",
+    provider: str | list[str] = "openai",
     proxy_host: str = "127.0.0.1",
     proxy_port: int = 8080,
 ) -> bool:
     """Non-interactive: auto-patch OpenClaw config for SentineLLM.
 
+    Args:
+        provider: Provider name(s) — a string or list of strings.
+                  E.g. "openai" or ["openai", "anthropic", "gemini"]
+        proxy_host: SentineLLM proxy host
+        proxy_port: SentineLLM proxy port
+
     Usage:
         from src.cli.agent_config import quick_configure_openclaw
         quick_configure_openclaw("anthropic")
+        quick_configure_openclaw(["openai", "anthropic", "gemini"])
 
     Returns True if successful, False otherwise.
     """
@@ -483,10 +585,8 @@ def quick_configure_openclaw(
         print("❌ OpenClaw config not found")
         return False
 
-    preset = PROVIDER_PRESETS.get(provider)
-    if not preset:
-        print(f"❌ Unknown provider: {provider}")
-        return False
+    # Normalize to list
+    providers = [provider] if isinstance(provider, str) else list(provider)
 
     proxy_url = _get_proxy_url(proxy_host, proxy_port)
     config_data = _read_json5_file(config_path)
@@ -495,13 +595,21 @@ def quick_configure_openclaw(
     backup_path = config_path.with_suffix(config_path.suffix + ".bak")
     shutil.copy2(config_path, backup_path)
 
-    config_data = _patch_openclaw_config(
-        config_data,
-        provider,
-        preset["base_url"],
-        proxy_url,
-    )
+    for prov in providers:
+        preset = PROVIDER_PRESETS.get(prov)
+        if not preset:
+            print(f"⚠️  Unknown provider: {prov} (skipped)")
+            continue
+
+        config_data = _patch_openclaw_config(
+            config_data,
+            prov,
+            preset["base_url"],
+            proxy_url,
+        )
+        print(f"  ✅ {prov} → {proxy_url} → {preset['base_url']}")
+
     _write_json_file(config_path, config_data)
 
-    print(f"✅ OpenClaw configured: {provider} → {proxy_url} → {preset['base_url']}")
+    print(f"✅ OpenClaw configured with {len(providers)} provider(s)")
     return True

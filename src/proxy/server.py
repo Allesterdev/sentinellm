@@ -226,8 +226,16 @@ def create_proxy_app(
     if os.environ.get("SENTINELLM_VALIDATE_OUTPUT", "").lower() in ("0", "false", "no"):
         _validate_output = False
 
+    # Minimum threat level required to actually block a request.
+    # Requests below this level are logged but forwarded.
+    # Options: LOW, MEDIUM, HIGH, CRITICAL (default: MEDIUM)
+    _min_block_level = os.environ.get("SENTINELLM_MIN_BLOCK_LEVEL", "MEDIUM").upper()
+    _block_levels = {"LOW": 1, "MEDIUM": 2, "HIGH": 3, "CRITICAL": 4}
+    _min_block_score = _block_levels.get(_min_block_level, 2)
+
     logger.info("Proxy will forward requests to: %s", target_url)
     logger.info("Output (DLP) validation: %s", "enabled" if _validate_output else "disabled")
+    logger.info("Minimum block level: %s", _min_block_level)
     validator = PromptValidator()
 
     async def _validate_and_forward(request: Request) -> Response:
@@ -257,26 +265,38 @@ def create_proxy_app(
                     result = validator.validate(str(content))
 
                     if not result.safe:
-                        logger.warning(
-                            "[%s] INPUT BLOCKED on %s: filter=%s threat=%s content_preview=%.80s",
-                            timestamp,
-                            request_path,
-                            result.blocked_by,
-                            result.threat_level,
-                            content,
-                        )
-                        raise HTTPException(
-                            status_code=403,
-                            detail={
-                                "error": {
-                                    "message": f"Request blocked by security filter: {result.blocked_by}",
-                                    "type": "security_violation",
-                                    "threat_level": result.threat_level,
-                                    "blocked_by": result.blocked_by,
-                                    "direction": "input",
-                                }
-                            },
-                        )
+                        threat_score = _block_levels.get(result.threat_level.upper(), 0)
+                        if threat_score >= _min_block_score:
+                            logger.warning(
+                                "[%s] INPUT BLOCKED on %s: filter=%s threat=%s content_preview=%.80s",
+                                timestamp,
+                                request_path,
+                                result.blocked_by,
+                                result.threat_level,
+                                content,
+                            )
+                            raise HTTPException(
+                                status_code=403,
+                                detail={
+                                    "error": {
+                                        "message": f"Request blocked by security filter: {result.blocked_by}",
+                                        "type": "security_violation",
+                                        "threat_level": result.threat_level,
+                                        "blocked_by": result.blocked_by,
+                                        "direction": "input",
+                                    }
+                                },
+                            )
+                        else:
+                            logger.info(
+                                "[%s] INPUT WARNING on %s: filter=%s threat=%s (below min_block_level=%s) content_preview=%.80s",
+                                timestamp,
+                                request_path,
+                                result.blocked_by,
+                                result.threat_level,
+                                _min_block_level,
+                                content,
+                            )
 
                 logger.info(
                     "[%s] INPUT OK on %s (%d messages validated)",
@@ -315,29 +335,41 @@ def create_proxy_app(
                         result = validator.validate(str(text))
 
                         if not result.safe:
-                            logger.warning(
-                                "[%s] OUTPUT BLOCKED on %s: filter=%s threat=%s content_preview=%.80s",
-                                timestamp,
-                                request_path,
-                                result.blocked_by,
-                                result.threat_level,
-                                text,
-                            )
-                            return Response(
-                                content=json.dumps(
-                                    {
-                                        "error": {
-                                            "message": f"Response blocked by DLP filter: {result.blocked_by}",
-                                            "type": "dlp_violation",
-                                            "threat_level": result.threat_level,
-                                            "blocked_by": result.blocked_by,
-                                            "direction": "output",
+                            threat_score = _block_levels.get(result.threat_level.upper(), 0)
+                            if threat_score >= _min_block_score:
+                                logger.warning(
+                                    "[%s] OUTPUT BLOCKED on %s: filter=%s threat=%s content_preview=%.80s",
+                                    timestamp,
+                                    request_path,
+                                    result.blocked_by,
+                                    result.threat_level,
+                                    text,
+                                )
+                                return Response(
+                                    content=json.dumps(
+                                        {
+                                            "error": {
+                                                "message": f"Response blocked by DLP filter: {result.blocked_by}",
+                                                "type": "dlp_violation",
+                                                "threat_level": result.threat_level,
+                                                "blocked_by": result.blocked_by,
+                                                "direction": "output",
+                                            }
                                         }
-                                    }
-                                ),
-                                status_code=403,
-                                media_type="application/json",
-                            )
+                                    ),
+                                    status_code=403,
+                                    media_type="application/json",
+                                )
+                            else:
+                                logger.info(
+                                    "[%s] OUTPUT WARNING on %s: filter=%s threat=%s (below min_block_level=%s) content_preview=%.80s",
+                                    timestamp,
+                                    request_path,
+                                    result.blocked_by,
+                                    result.threat_level,
+                                    _min_block_level,
+                                    text,
+                                )
 
                     if output_texts:
                         logger.info(

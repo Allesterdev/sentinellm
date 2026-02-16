@@ -9,17 +9,17 @@ prompt_injection:
 secret_detection:
   enabled: true
   patterns:
-  - aws
-  - github
-  - jwt
-  - generic
+    - aws
+    - github
+    - jwt
+    - generic
 ollama:
   mode: local
   local:
     host: localhost
     port: 11434
     timeout: 30
-  model: mistral:7b
+  model: auto # auto-detects installed model; override with SENTINELLM_OLLAMA_MODEL env var
   circuit_breaker:
     failure_threshold: 3
     recovery_timeout: 60
