@@ -444,3 +444,24 @@ class TestOllamaDetectorExtended:
         """Test: No injection returns NONE"""
         detector = OllamaDetector(test_config)
         assert detector._confidence_to_threat_level(0.95, False) == ThreatLevel.NONE
+
+    def test_default_prompt_template_used_when_empty(self):
+        """Test: Uses DEFAULT_PROMPT_TEMPLATE when config has empty prompt_template"""
+        from src.filters.llm_detector import DEFAULT_PROMPT_TEMPLATE
+
+        config = OllamaConfig(
+            mode="local",
+            local=OllamaLocalConfig(host="http://localhost", port=11434),
+            model=OllamaModelConfig(name="llama3.2:3b", prompt_template=""),
+            health_check=OllamaHealthCheckConfig(enabled=False),
+            circuit_breaker=OllamaCircuitBreakerConfig(enabled=False),
+            fallback=OllamaFallbackConfig(mode="regex_only"),
+        )
+
+        detector = OllamaDetector(config)
+
+        # Verify prompt_template was set to default
+        assert detector.config.model.prompt_template == DEFAULT_PROMPT_TEMPLATE
+        assert "{text}" in detector.config.model.prompt_template
+        assert "JSON" in detector.config.model.prompt_template
+        assert "is_injection" in detector.config.model.prompt_template

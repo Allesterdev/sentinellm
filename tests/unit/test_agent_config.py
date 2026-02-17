@@ -346,7 +346,7 @@ class TestPatchOpenclawConfig:
         assert result["models"]["providers"]["custom_llm"]["baseUrl"] == "http://127.0.0.1:8080"
 
     def test_patch_google_provider(self):
-        """Patching with 'google' provider sets google-generative-ai API type."""
+        """Patching with 'google' provider adds /v1beta path and sets API type."""
         config = {}
         result = _patch_openclaw_config(
             config,
@@ -355,7 +355,7 @@ class TestPatchOpenclawConfig:
             "http://127.0.0.1:8080",
         )
         provider = result["models"]["providers"]["google"]
-        assert provider["baseUrl"] == "http://127.0.0.1:8080"
+        assert provider["baseUrl"] == "http://127.0.0.1:8080/v1beta"
         assert provider["api"] == "google-generative-ai"
 
     def test_patch_preserves_other_config(self):
@@ -372,7 +372,7 @@ class TestPatchOpenclawConfig:
         )
         assert result["agents"]["defaults"]["model"]["primary"] == "google/gemini-2.5-flash"
         assert result["gateway"]["port"] == 18789
-        assert result["models"]["providers"]["google"]["baseUrl"] == "http://127.0.0.1:8080"
+        assert result["models"]["providers"]["google"]["baseUrl"] == "http://127.0.0.1:8080/v1beta"
 
     def test_patch_preserves_provider_models(self):
         """Patching preserves existing models array in provider."""
@@ -396,10 +396,40 @@ class TestPatchOpenclawConfig:
             "http://127.0.0.1:8080",
         )
         provider = result["models"]["providers"]["google"]
-        assert provider["baseUrl"] == "http://127.0.0.1:8080"
+        assert provider["baseUrl"] == "http://127.0.0.1:8080/v1beta"
         assert provider["api"] == "google-generative-ai"
         assert len(provider["models"]) == 1
         assert provider["models"][0]["id"] == "gemini-2.5-flash"
+
+    def test_patch_v1beta_path_for_google_gemini_only(self):
+        """Only google/gemini providers get /v1beta path, others don't."""
+        # Google should get /v1beta
+        config1 = {}
+        result1 = _patch_openclaw_config(
+            config1, "google", "https://generativelanguage.googleapis.com", "http://localhost:8080"
+        )
+        assert result1["models"]["providers"]["google"]["baseUrl"] == "http://localhost:8080/v1beta"
+
+        # Gemini should get /v1beta
+        config2 = {}
+        result2 = _patch_openclaw_config(
+            config2, "gemini", "https://generativelanguage.googleapis.com", "http://localhost:8080"
+        )
+        assert result2["models"]["providers"]["gemini"]["baseUrl"] == "http://localhost:8080/v1beta"
+
+        # OpenAI should NOT get /v1beta
+        config3 = {}
+        result3 = _patch_openclaw_config(
+            config3, "openai", "https://api.openai.com", "http://localhost:8080"
+        )
+        assert result3["models"]["providers"]["openai"]["baseUrl"] == "http://localhost:8080"
+
+        # Anthropic should NOT get /v1beta
+        config4 = {}
+        result4 = _patch_openclaw_config(
+            config4, "anthropic", "https://api.anthropic.com", "http://localhost:8080"
+        )
+        assert result4["models"]["providers"]["anthropic"]["baseUrl"] == "http://localhost:8080"
 
 
 # ── Tests for print functions ───────────────────────────────────────────
@@ -504,7 +534,7 @@ class TestQuickConfigureOpenclaw:
             assert providers["openai"]["api"] == "openai-responses"
             assert providers["anthropic"]["baseUrl"] == "http://127.0.0.1:8080"
             assert providers["anthropic"]["api"] == "anthropic"
-            assert providers["gemini"]["baseUrl"] == "http://127.0.0.1:8080"
+            assert providers["gemini"]["baseUrl"] == "http://127.0.0.1:8080/v1beta"
             assert providers["gemini"]["api"] == "google-generative-ai"
 
     def test_multi_provider_skips_unknown(self, tmp_path, capsys):

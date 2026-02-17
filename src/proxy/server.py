@@ -19,6 +19,7 @@ import json
 import logging
 import os
 from datetime import datetime, timezone
+from pathlib import Path
 
 import httpx
 from fastapi import FastAPI, HTTPException, Request, Response
@@ -26,6 +27,28 @@ from fastapi import FastAPI, HTTPException, Request, Response
 from ..core.prompt_validator import PromptValidator
 
 logger = logging.getLogger(__name__)
+
+
+def _load_env_file() -> None:
+    """Load environment variables from ~/.sentinellm.env if it exists."""
+    env_path = Path.home() / ".sentinellm.env"
+    if not env_path.exists():
+        return
+
+    try:
+        with open(env_path, encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith("#"):
+                    continue
+                if "=" in line:
+                    key, value = line.split("=", 1)
+                    # Only set if not already in environment
+                    if key.strip() and key.strip() not in os.environ:
+                        os.environ[key.strip()] = value.strip()
+        logger.info(f"Loaded environment from {env_path}")
+    except Exception as e:
+        logger.warning(f"Failed to load {env_path}: {e}")
 
 
 def _extract_text_from_content(content) -> list[str]:
@@ -211,6 +234,9 @@ def create_proxy_app(
         validate_output: Whether to also validate LLM responses for secret leakage (DLP).
                         Defaults to True.
     """
+    # Load environment from ~/.sentinellm.env if exists
+    _load_env_file()
+
     app = FastAPI(
         title="SentineLLM Proxy",
         description="Security proxy for LLM API requests (input & output validation)",

@@ -40,7 +40,7 @@ def check_ollama_running() -> bool:
     """Check if Ollama service is running."""
     try:
         result = subprocess.run(
-            ["ollama", "list"],
+            ["ollama", "list"],  # noqa: S607
             capture_output=True,
             timeout=3,
             check=False,
@@ -54,7 +54,7 @@ def get_ollama_models() -> list[str]:
     """Get list of installed Ollama models."""
     try:
         result = subprocess.run(
-            ["ollama", "list"],
+            ["ollama", "list"],  # noqa: S607
             capture_output=True,
             text=True,
             timeout=3,
