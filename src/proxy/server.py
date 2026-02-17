@@ -23,6 +23,7 @@ from pathlib import Path
 
 import httpx
 from fastapi import FastAPI, HTTPException, Request, Response
+from fastapi.responses import StreamingResponse
 
 from ..core.prompt_validator import PromptValidator
 
@@ -344,6 +345,14 @@ def create_proxy_app(
                         request_path = f"/v1beta{clean_path}"
                         logger.debug(f"Rewrote Google Gemini path to: {request_path}")
 
+            # Detect streaming requests (SSE / Server-Sent Events)
+            query_string = str(request.url.query)
+            is_streaming = (
+                "alt=sse" in query_string
+                or "stream=true" in query_string
+                or request.headers.get("accept") == "text/event-stream"
+            )
+
             async with httpx.AsyncClient() as client:
                 # Prepare headers (remove proxy-specific headers)
                 forward_headers = dict(request.headers)
@@ -352,6 +361,47 @@ def create_proxy_app(
                 # Remove content-length as httpx recalculates it
                 forward_headers.pop("content-length", None)
 
+                # === STREAMING: Pass-through without output validation ===
+                if is_streaming:
+                    logger.info(
+                        "[%s] STREAMING request on %s (output validation skipped)",
+                        timestamp,
+                        request_path,
+                    )
+
+                    # Create streaming request
+                    req = client.build_request(
+                        method=request.method,
+                        url=f"{forward_url}{request_path}",
+                        content=raw_body,
+                        headers=forward_headers,
+                        timeout=120.0,
+                    )
+
+                    # Send request and stream response
+                    resp = await client.send(req, stream=True)
+
+                    # Stream chunks directly to client
+                    async def stream_chunks():
+                        async for chunk in resp.aiter_raw():
+                            yield chunk
+                        await resp.aclose()
+
+                    # Return streaming response with original headers
+                    response_headers = {}
+                    hop_by_hop = {"transfer-encoding", "connection", "keep-alive"}
+                    for k, v in resp.headers.items():
+                        if k.lower() not in hop_by_hop:
+                            response_headers[k] = v
+
+                    return StreamingResponse(
+                        stream_chunks(),
+                        status_code=resp.status_code,
+                        headers=response_headers,
+                        media_type=resp.headers.get("content-type", "text/event-stream"),
+                    )
+
+                # === NON-STREAMING: Regular request with output validation ===
                 response = await client.request(
                     method=request.method,
                     url=f"{forward_url}{request_path}",

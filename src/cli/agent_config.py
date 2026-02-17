@@ -400,6 +400,7 @@ def configure_agent_interactive(
             )
 
         print(f"\n{t('agent_select_provider')}")
+        print("  💡 Usa ⬆️⬇️ para navegar, ESPACIO para marcar, ENTER para confirmar\n")
         selected_providers = questionary.checkbox(
             t("agent_multi_provider_question"),
             choices=provider_choices,
@@ -407,7 +408,8 @@ def configure_agent_interactive(
         ).ask()
 
         if not selected_providers:
-            print("  ⏭️  No providers selected.")
+            print("  ⚠️  No se seleccionó ningún proveedor.")
+            print("     Tip: Usa BARRA ESPACIADORA para marcar opciones antes de presionar ENTER")
             return None
 
         # Backup original config
