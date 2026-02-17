@@ -378,21 +378,24 @@ def create_proxy_app(
                         timeout=120.0,
                     )
 
-                    # Send request and stream response
+                    # Send request and get streaming response
                     resp = await client.send(req, stream=True)
 
-                    # Stream chunks directly to client
-                    async def stream_chunks():
-                        async for chunk in resp.aiter_raw():
-                            yield chunk
-                        await resp.aclose()
-
-                    # Return streaming response with original headers
+                    # Prepare response headers (exclude hop-by-hop headers)
                     response_headers = {}
                     hop_by_hop = {"transfer-encoding", "connection", "keep-alive"}
                     for k, v in resp.headers.items():
                         if k.lower() not in hop_by_hop:
                             response_headers[k] = v
+
+                    # Stream chunks directly to client
+                    async def stream_chunks():
+                        try:
+                            async for chunk in resp.aiter_raw():
+                                yield chunk
+                        finally:
+                            # Ensure response is closed after streaming
+                            await resp.aclose()
 
                     return StreamingResponse(
                         stream_chunks(),

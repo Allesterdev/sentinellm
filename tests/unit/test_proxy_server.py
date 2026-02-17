@@ -3,6 +3,7 @@
 import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
 from fastapi.testclient import TestClient
 
 from src.proxy.server import (
@@ -807,3 +808,208 @@ class TestCreateProxyApp:
             assert response.status_code == 200
             assert "transfer-encoding" not in response.headers
             assert "connection" not in response.headers
+
+
+# ── Tests for Streaming Support (SSE) ───────────────────────────────────
+
+
+class TestStreamingSupport:
+    """Tests for Server-Sent Events (SSE) streaming support."""
+
+    def test_streaming_detected_with_alt_sse_param(self):
+        """Request with ?alt=sse query param should trigger streaming."""
+        app = create_proxy_app(target_url="https://generativelanguage.googleapis.com")
+        client = TestClient(app, raise_server_exceptions=False)
+
+        # Mock streaming response
+        mock_response = AsyncMock()
+        mock_response.status_code = 200
+        mock_response.headers = {"content-type": "text/event-stream"}
+
+        # Mock async iteration
+        async def mock_aiter_raw():
+            yield b"data: test chunk 1\n\n"
+            yield b"data: test chunk 2\n\n"
+
+        mock_response.aiter_raw = mock_aiter_raw
+        mock_response.aclose = AsyncMock()
+
+        with patch("httpx.AsyncClient") as mock_client_cls:
+            mock_client = AsyncMock()
+            mock_client.build_request = MagicMock(return_value=MagicMock())
+            mock_client.send = AsyncMock(return_value=mock_response)
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock(return_value=False)
+            mock_client_cls.return_value = mock_client
+
+            # Request with alt=sse should stream
+            response = client.post(
+                "/v1/models/gemini-2.0-flash:streamGenerateContent?alt=sse",
+                json={"contents": [{"parts": [{"text": "Hello"}]}]},
+            )
+
+            assert response.status_code == 200
+            # Verify response is streamed
+            content = response.content
+            assert b"test chunk 1" in content or b"test chunk 2" in content
+
+    def test_streaming_detected_with_stream_true_param(self):
+        """Request with ?stream=true query param should trigger streaming."""
+        app = create_proxy_app(target_url="https://api.openai.com")
+        client = TestClient(app, raise_server_exceptions=False)
+
+        mock_response = AsyncMock()
+        mock_response.status_code = 200
+        mock_response.headers = {"content-type": "text/event-stream"}
+
+        async def mock_aiter_raw():
+            yield b"data: chunk\n\n"
+
+        mock_response.aiter_raw = mock_aiter_raw
+        mock_response.aclose = AsyncMock()
+
+        with patch("httpx.AsyncClient") as mock_client_cls:
+            mock_client = AsyncMock()
+            mock_client.build_request = MagicMock(return_value=MagicMock())
+            mock_client.send = AsyncMock(return_value=mock_response)
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock(return_value=False)
+            mock_client_cls.return_value = mock_client
+
+            response = client.post(
+                "/v1/chat/completions?stream=true",
+                json={"model": "gpt-4", "messages": [{"role": "user", "content": "Hi"}]},
+            )
+
+            assert response.status_code == 200
+
+    def test_streaming_detected_with_event_stream_header(self):
+        """Request with Accept: text/event-stream header should trigger streaming."""
+        app = create_proxy_app(target_url="https://api.openai.com")
+        client = TestClient(app, raise_server_exceptions=False)
+
+        mock_response = AsyncMock()
+        mock_response.status_code = 200
+        mock_response.headers = {"content-type": "text/event-stream"}
+
+        async def mock_aiter_raw():
+            yield b"data: response\n\n"
+
+        mock_response.aiter_raw = mock_aiter_raw
+        mock_response.aclose = AsyncMock()
+
+        with patch("httpx.AsyncClient") as mock_client_cls:
+            mock_client = AsyncMock()
+            mock_client.build_request = MagicMock(return_value=MagicMock())
+            mock_client.send = AsyncMock(return_value=mock_response)
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock(return_value=False)
+            mock_client_cls.return_value = mock_client
+
+            response = client.post(
+                "/v1/chat/completions",
+                json={"model": "gpt-4", "messages": []},
+                headers={"accept": "text/event-stream"},
+            )
+
+            assert response.status_code == 200
+
+    def test_streaming_response_cleanup_called(self):
+        """Streaming should close response even after iteration completes."""
+        app = create_proxy_app(target_url="https://api.openai.com")
+        client = TestClient(app, raise_server_exceptions=False)
+
+        mock_response = AsyncMock()
+        mock_response.status_code = 200
+        mock_response.headers = {"content-type": "text/event-stream"}
+
+        async def mock_aiter_raw():
+            yield b"chunk1"
+            yield b"chunk2"
+
+        mock_response.aiter_raw = mock_aiter_raw
+        mock_response.aclose = AsyncMock()
+
+        with patch("httpx.AsyncClient") as mock_client_cls:
+            mock_client = AsyncMock()
+            mock_client.build_request = MagicMock(return_value=MagicMock())
+            mock_client.send = AsyncMock(return_value=mock_response)
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock(return_value=False)
+            mock_client_cls.return_value = mock_client
+
+            response = client.post(
+                "/v1/chat/completions?stream=true",
+                json={"model": "gpt-4", "messages": []},
+            )
+
+            # Consume the stream to trigger cleanup
+            _ = response.content
+
+            # Verify aclose was called (cleanup in finally block)
+            mock_response.aclose.assert_called_once()
+
+    def test_streaming_response_cleanup_on_iteration_error(self):
+        """Streaming should close response even if iteration fails."""
+        app = create_proxy_app(target_url="https://api.openai.com")
+        client = TestClient(app, raise_server_exceptions=False)
+
+        mock_response = AsyncMock()
+        mock_response.status_code = 200
+        mock_response.headers = {"content-type": "text/event-stream"}
+
+        async def mock_aiter_raw():
+            yield b"chunk1"
+            raise RuntimeError("Stream error")
+
+        mock_response.aiter_raw = mock_aiter_raw
+        mock_response.aclose = AsyncMock()
+
+        with patch("httpx.AsyncClient") as mock_client_cls:
+            mock_client = AsyncMock()
+            mock_client.build_request = MagicMock(return_value=MagicMock())
+            mock_client.send = AsyncMock(return_value=mock_response)
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock(return_value=False)
+            mock_client_cls.return_value = mock_client
+
+            # This should not crash, even with stream error
+            try:
+                response = client.post(
+                    "/v1/chat/completions?stream=true",
+                    json={"model": "gpt-4", "messages": []},
+                )
+                _ = response.content
+            except (RuntimeError, httpx.ReadError):
+                # Expected: stream iteration fails but cleanup still happens
+                pass
+
+            # Verify cleanup was still called despite error
+            mock_response.aclose.assert_called_once()
+
+    def test_non_streaming_request_uses_regular_flow(self):
+        """Request without streaming params should use regular validation flow."""
+        app = create_proxy_app(target_url="https://api.openai.com")
+        client = TestClient(app, raise_server_exceptions=False)
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.content = json.dumps({"choices": [{"message": {"content": "Hi"}}]}).encode()
+        mock_response.headers = {"content-type": "application/json"}
+
+        with patch("httpx.AsyncClient") as mock_client_cls:
+            mock_client = AsyncMock()
+            # Regular request() should be called, not send() with streaming
+            mock_client.request = AsyncMock(return_value=mock_response)
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock(return_value=False)
+            mock_client_cls.return_value = mock_client
+
+            response = client.post(
+                "/v1/chat/completions",
+                json={"model": "gpt-4", "messages": [{"role": "user", "content": "Hi"}]},
+            )
+
+            assert response.status_code == 200
+            # Verify regular request was used
+            mock_client.request.assert_called_once()
