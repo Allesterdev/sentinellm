@@ -247,6 +247,7 @@ class TestPatchOpenclawConfig:
         )
         assert result["models"]["providers"]["openai"]["baseUrl"] == "http://127.0.0.1:8080"
         assert result["models"]["providers"]["openai"]["api"] == "openai-responses"
+        assert result["models"]["providers"]["openai"]["models"] == []
 
     def test_patch_existing_config(self):
         """Patching existing config preserves other providers."""
@@ -261,6 +262,7 @@ class TestPatchOpenclawConfig:
             config, "openai", "https://api.openai.com", "http://127.0.0.1:8080"
         )
         assert result["models"]["providers"]["openai"]["baseUrl"] == "http://127.0.0.1:8080"
+        assert result["models"]["providers"]["openai"]["models"] == []
         assert result["models"]["providers"]["anthropic"]["baseUrl"] == "https://api.anthropic.com"
 
     def test_patch_overwrites_base_url(self):
@@ -276,6 +278,7 @@ class TestPatchOpenclawConfig:
             config, "openai", "https://api.openai.com", "http://127.0.0.1:8080"
         )
         assert result["models"]["providers"]["openai"]["baseUrl"] == "http://127.0.0.1:8080"
+        assert result["models"]["providers"]["openai"]["models"] == []
 
     def test_patch_already_proxied(self):
         """Patching already-proxied config updates baseUrl idempotently."""

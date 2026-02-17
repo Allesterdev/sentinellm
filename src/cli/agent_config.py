@@ -37,7 +37,7 @@ CUSTOM_STYLE = Style(
 KNOWN_AGENTS: dict[str, dict[str, Any]] = {
     "openclaw": {
         "name": "OpenClaw",
-        "description": "AI coding agent",
+        "description": "AI agent",
         "config_paths": [
             "~/.openclaw/openclaw.json",
             "~/.openclaw/config.json5",
@@ -52,7 +52,7 @@ KNOWN_AGENTS: dict[str, dict[str, Any]] = {
     },
     "cline": {
         "name": "Cline",
-        "description": "AI coding agent (VS Code)",
+        "description": "AI agent (VS Code)",
         "config_paths": [
             "~/.config/cline/config.json",
             "~/.cline/config.json",
@@ -260,6 +260,10 @@ def _patch_openclaw_config(
     if api_type and "api" not in provider:
         provider["api"] = api_type
 
+    # Ensure models array exists (required by OpenClaw's Zod schema)
+    if "models" not in provider:
+        provider["models"] = []
+
     return config_data
 
 
@@ -401,9 +405,21 @@ def configure_agent_interactive(
 
         print(f"\n{t('agent_select_provider')}")
         print("  💡 Usa ⬆️⬇️ para navegar, ESPACIO para marcar, ENTER para confirmar\n")
+
+        # Get language-specific instruction text for checkbox
+        from src.cli.i18n import get_language
+
+        lang = get_language()
+        checkbox_instruction = (
+            "Usa las flechas para navegar, <espacio> para marcar/desmarcar, <enter> para confirmar"
+            if lang == "es"
+            else "Use arrow keys to move, <space> to select, <enter> to confirm"
+        )
+
         selected_providers = questionary.checkbox(
             t("agent_multi_provider_question"),
             choices=provider_choices,
+            instruction=checkbox_instruction,
             style=CUSTOM_STYLE,
         ).ask()
 

@@ -15,7 +15,15 @@ Quick usage (alias: sllm):
     sllm config                   # Change configuration
 """
 
+import logging
 import sys
+from pathlib import Path
+
+from src.cli.config_wizard import run_config_wizard
+from src.cli.i18n import set_language, t
+from src.cli.setup import check_ollama_installation, install_ollama_guide, run_setup
+
+logger = logging.getLogger(__name__)
 
 try:
     import questionary
@@ -24,9 +32,6 @@ except ImportError:
     print("Install it with: pip install questionary")
     sys.exit(1)
 
-from src.cli.config_wizard import run_config_wizard
-from src.cli.i18n import set_language, t
-from src.cli.setup import check_ollama_installation, install_ollama_guide, run_setup
 
 # ── Provider shortcuts ──────────────────────────────────────────────────
 PROVIDER_SHORTCUTS: dict[str, str] = {
@@ -172,6 +177,19 @@ def main():
             host = "127.0.0.1"
             port = 8080
             target_url = None
+
+            # Try to load target URL from .sentinellm.env if not provided
+            env_file = Path.home() / ".sentinellm.env"
+            if env_file.exists():
+                try:
+                    for line in env_file.read_text().splitlines():
+                        line = line.strip()
+                        if line.startswith("SENTINELLM_TARGET_URL="):
+                            target_url = line.split("=", 1)[1].strip()
+                            break
+                except (OSError, ValueError) as e:
+                    # Log but don't fail - env file is optional
+                    logger.debug("Could not read %s: %s", env_file, e)
 
             # Check if next arg is a provider shortcut or URL
             remaining = sys.argv[2:]
