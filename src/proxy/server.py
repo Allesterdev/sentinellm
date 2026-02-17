@@ -334,6 +334,16 @@ def create_proxy_app(
             # === FORWARD TO LLM ===
             forward_url = request.headers.get("X-Target-URL", target_url)
 
+            # Fix Google Gemini API paths: add /v1beta prefix if missing
+            # Google Gemini expects /v1beta/models/... but some clients send /models/...
+            if "generativelanguage.googleapis.com" in forward_url:
+                if request_path.startswith("/models/") or request_path.startswith("/v1/models/"):
+                    if not request_path.startswith("/v1beta/"):
+                        # Remove /v1/ prefix if present, then add /v1beta/
+                        clean_path = request_path.replace("/v1/models/", "/models/")
+                        request_path = f"/v1beta{clean_path}"
+                        logger.debug(f"Rewrote Google Gemini path to: {request_path}")
+
             async with httpx.AsyncClient() as client:
                 # Prepare headers (remove proxy-specific headers)
                 forward_headers = dict(request.headers)

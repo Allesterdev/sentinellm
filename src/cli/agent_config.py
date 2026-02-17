@@ -252,13 +252,8 @@ def _patch_openclaw_config(
 
     provider = providers[provider_name]
 
-    # For Google Gemini, add /v1beta path prefix
-    final_proxy_url = proxy_url
-    if provider_name in ("google", "gemini"):
-        final_proxy_url = f"{proxy_url}/v1beta"
-
     # Point to SentineLLM proxy
-    provider["baseUrl"] = final_proxy_url
+    provider["baseUrl"] = proxy_url
 
     # Set API type if known and not already configured
     api_type = OPENCLAW_API_MAP.get(provider_name)
