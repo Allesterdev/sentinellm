@@ -225,6 +225,39 @@ def _get_proxy_url(host: str = "127.0.0.1", port: int = 8080) -> str:
     return f"http://{host}:{port}"
 
 
+def _create_openclaw_default_config() -> dict[str, Any]:
+    """Create OpenClaw default config structure with required fields."""
+    import secrets
+    from datetime import datetime
+
+    now = datetime.now().strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+    version = "2026.2.6-3"
+    # Generate secure random token for gateway auth
+    gateway_token = secrets.token_hex(32)
+
+    return {
+        "messages": {"ackReactionScope": "group-mentions"},
+        "agents": {
+            "defaults": {"maxConcurrent": 4, "subagents": {"maxConcurrent": 8}},
+            "compaction": {"mode": "safeguard"},
+        },
+        "gateway": {
+            "mode": "local",
+            "port": 18789,
+            "bind": "loopback",
+            "auth": {"mode": "token", "token": gateway_token},
+            "tailscale": {"mode": "off", "resetOnExit": False},
+        },
+        "wizard": {
+            "lastRunAt": now,
+            "lastRunVersion": version,
+            "lastRunCommand": "configure",
+            "lastRunMode": "local",
+        },
+        "meta": {"lastTouchedVersion": version, "lastTouchedAt": now},
+    }
+
+
 def _patch_openclaw_config(
     config_data: dict[str, Any],
     provider_name: str,
@@ -237,9 +270,11 @@ def _patch_openclaw_config(
     URL.  The proxy forwards requests to the original provider endpoint
     (configured via ``SENTINELLM_TARGET_URL`` env var at proxy startup).
 
+    Preserves all existing OpenClaw config fields (gateway, agents, etc.).
     Only writes fields accepted by OpenClaw's strict Zod schema:
     ``baseUrl`` and ``api``.
     """
+    # Ensure base structure exists (preserves existing fields)
     if "models" not in config_data:
         config_data["models"] = {}
     if "providers" not in config_data["models"]:
@@ -377,9 +412,18 @@ def configure_agent_interactive(
 
         config_path = Path(agent_def["config_paths"][0]).expanduser()
         config_path.parent.mkdir(parents=True, exist_ok=True)
-        config_data: dict[str, Any] = {}
+        # Create OpenClaw default config with all required fields
+        config_data: dict[str, Any] = (
+            _create_openclaw_default_config() if selected_agent == "openclaw" else {}
+        )
     else:
         config_data = _read_json5_file(config_path)
+        # Merge with defaults if OpenClaw config is missing required fields
+        if selected_agent == "openclaw":
+            defaults = _create_openclaw_default_config()
+            for key in ["messages", "agents", "gateway", "wizard", "meta"]:
+                if key not in config_data:
+                    config_data[key] = defaults[key]
 
     # ── OpenClaw: multi-provider selection ──────────────────────────────
     if selected_agent == "openclaw":
@@ -654,6 +698,12 @@ def quick_configure_openclaw(
 
     proxy_url = _get_proxy_url(proxy_host, proxy_port)
     config_data = _read_json5_file(config_path)
+
+    # Ensure OpenClaw has all required fields (merge with defaults if missing)
+    defaults = _create_openclaw_default_config()
+    for key in ["messages", "agents", "gateway", "wizard", "meta"]:
+        if key not in config_data:
+            config_data[key] = defaults[key]
 
     # Backup
     backup_path = config_path.with_suffix(config_path.suffix + ".bak")
