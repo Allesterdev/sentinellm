@@ -129,6 +129,45 @@ OPENCLAW_API_MAP: dict[str, str] = {
     "azure": "openai-chat",
 }
 
+# Default model info per provider (id, display name, API key env var)
+PROVIDER_DEFAULT_MODELS: dict[str, dict[str, str | None]] = {
+    "openai": {
+        "id": "gpt-4o",
+        "name": "GPT-4o (via SentineLLM)",
+        "api_key_env": "OPENAI_API_KEY",  # pragma: allowlist secret
+    },
+    "anthropic": {
+        "id": "claude-sonnet-4-5",
+        "name": "Claude Sonnet 4.5 (via SentineLLM)",
+        "api_key_env": "ANTHROPIC_API_KEY",  # pragma: allowlist secret
+    },
+    "gemini": {
+        "id": "gemini-2.0-flash",
+        "name": "Gemini 2.0 Flash (via SentineLLM)",
+        "api_key_env": "GEMINI_API_KEY",  # pragma: allowlist secret
+    },
+    "google": {
+        "id": "gemini-2.0-flash",
+        "name": "Gemini 2.0 Flash (via SentineLLM)",
+        "api_key_env": "GEMINI_API_KEY",  # pragma: allowlist secret
+    },
+    "ollama": {
+        "id": "llama3.3",
+        "name": "Llama 3.3 (via SentineLLM)",
+        "api_key_env": None,
+    },
+    "openrouter": {
+        "id": "anthropic/claude-sonnet-4-5",
+        "name": "Claude Sonnet 4.5 via OpenRouter (via SentineLLM)",
+        "api_key_env": "OPENROUTER_API_KEY",  # pragma: allowlist secret
+    },
+    "azure": {
+        "id": "gpt-4o",
+        "name": "GPT-4o Azure (via SentineLLM)",
+        "api_key_env": "AZURE_OPENAI_API_KEY",  # pragma: allowlist secret
+    },
+}
+
 
 def _find_agent_config(agent_id: str) -> Path | None:
     """Find the configuration file for a known agent."""
@@ -239,7 +278,6 @@ def _create_openclaw_default_config() -> dict[str, Any]:
         "messages": {"ackReactionScope": "group-mentions"},
         "agents": {
             "defaults": {"maxConcurrent": 4, "subagents": {"maxConcurrent": 8}},
-            "compaction": {"mode": "safeguard"},
         },
         "gateway": {
             "mode": "local",
@@ -266,38 +304,83 @@ def _patch_openclaw_config(
 ) -> dict[str, Any]:
     """Patch an OpenClaw config dict to route through SentineLLM.
 
-    Sets ``models.providers.<provider>.baseUrl`` to the SentineLLM proxy
-    URL.  The proxy forwards requests to the original provider endpoint
-    (configured via ``SENTINELLM_TARGET_URL`` env var at proxy startup).
+    Creates a *custom* provider named ``sentinellm-{provider}`` (e.g.,
+    ``sentinellm-gemini``) and sets it as the primary model.  This is the
+    correct approach per the OpenClaw docs: ``models.providers`` is for
+    custom/proxy providers — overriding the ``baseUrl`` of a built-in
+    provider (e.g., ``google``) has no effect because OpenClaw uses the
+    hardcoded endpoint for built-in providers.
 
-    Preserves all existing OpenClaw config fields (gateway, agents, etc.).
-    Only writes fields accepted by OpenClaw's strict Zod schema:
-    ``baseUrl`` and ``api``.
+    Config written:
+      models.mode = "merge"
+      models.providers.sentinellm-{provider}.baseUrl  = proxy_url
+      models.providers.sentinellm-{provider}.api      = <api-type>
+      models.providers.sentinellm-{provider}.apiKey   = ${API_KEY_ENV}
+      models.providers.sentinellm-{provider}.models   = [{id, name}]
+      agents.defaults.model.primary                   = sentinellm-{provider}/{model-id}
+      agents.defaults.models.{model-ref}.alias        = {friendly name}
     """
-    # Ensure base structure exists (preserves existing fields)
+    # Custom provider name avoids collision with OpenClaw built-ins
+    custom_provider = f"sentinellm-{provider_name}"
+
+    # Model info for this provider
+    model_info = PROVIDER_DEFAULT_MODELS.get(
+        provider_name,
+        {
+            "id": "default-model",
+            "name": f"Audited model (via SentineLLM → {provider_name})",
+            "api_key_env": None,
+        },
+    )
+    model_ref = f"{custom_provider}/{model_info['id']}"
+
+    # ── models section (mode + providers) ──────────────────────────────
     if "models" not in config_data:
         config_data["models"] = {}
+    config_data["models"]["mode"] = "merge"
     if "providers" not in config_data["models"]:
         config_data["models"]["providers"] = {}
 
     providers = config_data["models"]["providers"]
 
-    if provider_name not in providers:
-        providers[provider_name] = {}
+    # Build provider entry — preserve existing custom model list if present
+    existing_models: list = []
+    if custom_provider in providers and isinstance(providers[custom_provider].get("models"), list):
+        existing_models = providers[custom_provider]["models"]
 
-    provider = providers[provider_name]
+    # Ensure our default model is in the list
+    if not any(m.get("id") == model_info["id"] for m in existing_models):
+        existing_models = [{"id": model_info["id"], "name": model_info["name"]}] + existing_models
 
-    # Point to SentineLLM proxy
-    provider["baseUrl"] = proxy_url
+    provider_entry: dict[str, Any] = {
+        "baseUrl": proxy_url,
+        "api": OPENCLAW_API_MAP.get(provider_name, "openai-completions"),
+        "models": existing_models,
+    }
+    if model_info.get("api_key_env"):
+        provider_entry["apiKey"] = f"${{{model_info['api_key_env']}}}"  # pragma: allowlist secret
+    elif provider_name == "ollama":
+        provider_entry["apiKey"] = "ollama-local"
 
-    # Set API type if known and not already configured
-    api_type = OPENCLAW_API_MAP.get(provider_name)
-    if api_type and "api" not in provider:
-        provider["api"] = api_type
+    providers[custom_provider] = provider_entry
 
-    # Ensure models array exists (required by OpenClaw's Zod schema)
-    if "models" not in provider:
-        provider["models"] = []
+    # ── agents.defaults: set primary model & allowlist ─────────────────
+    if "agents" not in config_data:
+        config_data["agents"] = {}
+    if "defaults" not in config_data["agents"]:
+        config_data["agents"]["defaults"] = {}
+
+    agent_defaults = config_data["agents"]["defaults"]
+
+    # Set model.primary
+    if "model" not in agent_defaults:
+        agent_defaults["model"] = {}
+    agent_defaults["model"]["primary"] = model_ref
+
+    # Add to models allowlist (alias shown in /model list)
+    if "models" not in agent_defaults:
+        agent_defaults["models"] = {}
+    agent_defaults["models"][model_ref] = {"alias": f"{model_info['name']}"}
 
     return config_data
 
@@ -568,11 +651,27 @@ def _resolve_target_url(provider_id: str, preset: dict[str, str]) -> str:
 
 
 def _detect_existing_providers(config_data: dict[str, Any]) -> set[str]:
-    """Detect which providers are already configured in an OpenClaw config."""
+    """Detect which providers are already routed through SentineLLM.
+
+    Checks ``models.providers`` for keys in the form ``sentinellm-{provider}``
+    (the custom provider pattern written by ``_patch_openclaw_config``).  Also
+    includes plain provider names so that manually-configured entries are
+    detected correctly.
+    """
     try:
-        return set(config_data.get("models", {}).get("providers", {}).keys())
+        keys = set(config_data.get("models", {}).get("providers", {}).keys())
     except (AttributeError, TypeError):
         return set()
+
+    result: set[str] = set()
+    sentinellm_prefix = "sentinellm-"
+    for key in keys:
+        if key.startswith(sentinellm_prefix):
+            # "sentinellm-gemini" → "gemini"
+            result.add(key[len(sentinellm_prefix) :])
+        else:
+            result.add(key)
+    return result
 
 
 def _print_manual_instructions(

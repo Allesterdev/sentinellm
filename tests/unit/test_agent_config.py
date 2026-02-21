@@ -6,8 +6,9 @@ from unittest.mock import patch
 
 from src.cli.agent_config import (
     KNOWN_AGENTS,
-    OPENCLAW_API_MAP,
+    PROVIDER_DEFAULT_MODELS,
     PROVIDER_PRESETS,
+    _create_openclaw_default_config,
     _detect_existing_providers,
     _find_agent_config,
     _get_proxy_url,
@@ -218,6 +219,66 @@ class TestWriteJsonFile:
         assert "José" in content
 
 
+# ── Tests for _create_openclaw_default_config ───────────────────────────
+
+
+class TestCreateOpenclawDefaultConfig:
+    """Tests for _create_openclaw_default_config."""
+
+    def test_creates_required_sections(self):
+        """Default config has all required top-level sections."""
+        config = _create_openclaw_default_config()
+        assert "messages" in config
+        assert "agents" in config
+        assert "gateway" in config
+        assert "wizard" in config
+        assert "meta" in config
+
+    def test_no_invalid_compaction_field(self):
+        """Config must NOT contain invalid 'compaction' field."""
+        config = _create_openclaw_default_config()
+        # Verify 'compaction' is not in agents section
+        assert "compaction" not in config.get("agents", {})
+
+    def test_agents_structure(self):
+        """Agents section has valid structure."""
+        config = _create_openclaw_default_config()
+        agents = config["agents"]
+        assert "defaults" in agents
+        assert "maxConcurrent" in agents["defaults"]
+        assert "subagents" in agents["defaults"]
+        assert isinstance(agents["defaults"]["maxConcurrent"], int)
+        assert isinstance(agents["defaults"]["subagents"], dict)
+
+    def test_gateway_structure(self):
+        """Gateway section has valid structure."""
+        config = _create_openclaw_default_config()
+        gateway = config["gateway"]
+        assert gateway["mode"] == "local"
+        assert gateway["port"] == 18789
+        assert gateway["bind"] == "loopback"
+        assert "auth" in gateway
+        assert gateway["auth"]["mode"] == "token"
+        assert "token" in gateway["auth"]
+        assert len(gateway["auth"]["token"]) == 64  # 32 bytes hex = 64 chars
+
+    def test_wizard_populated(self):
+        """Wizard section has timestamps and version."""
+        config = _create_openclaw_default_config()
+        wizard = config["wizard"]
+        assert "lastRunAt" in wizard
+        assert "lastRunVersion" in wizard
+        assert wizard["lastRunVersion"] == "2026.2.6-3"
+
+    def test_meta_populated(self):
+        """Meta section has timestamps and version."""
+        config = _create_openclaw_default_config()
+        meta = config["meta"]
+        assert "lastTouchedAt" in meta
+        assert "lastTouchedVersion" in meta
+        assert meta["lastTouchedVersion"] == "2026.2.6-3"
+
+
 # ── Tests for _get_proxy_url ────────────────────────────────────────────
 
 
@@ -237,172 +298,144 @@ class TestGetProxyUrl:
 
 
 class TestPatchOpenclawConfig:
-    """Tests for _patch_openclaw_config."""
+    """Tests for _patch_openclaw_config.
 
-    def test_patch_empty_config(self):
-        """Patching an empty config creates the models.providers structure."""
-        config = {}
+    New behavior: creates a *custom* sentinellm-{provider} provider so that
+    OpenClaw actually routes traffic through the proxy (built-in providers
+    ignore baseUrl overrides per OpenClaw docs).
+    """
+
+    PROXY = "http://127.0.0.1:8080"
+
+    def test_patch_creates_custom_provider_name(self):
+        """Patching creates 'sentinellm-openai', not 'openai'."""
+        result = _patch_openclaw_config({}, "openai", "https://api.openai.com", self.PROXY)
+        assert "sentinellm-openai" in result["models"]["providers"]
+        assert "openai" not in result["models"]["providers"]
+
+    def test_patch_sets_base_url_on_custom_provider(self):
+        """Custom provider's baseUrl points to the SentineLLM proxy."""
+        result = _patch_openclaw_config({}, "openai", "https://api.openai.com", self.PROXY)
+        assert result["models"]["providers"]["sentinellm-openai"]["baseUrl"] == self.PROXY
+
+    def test_patch_sets_models_mode_merge(self):
+        """models.mode is always set to 'merge' to preserve other providers."""
         result = _patch_openclaw_config(
-            config, "openai", "https://api.openai.com", "http://127.0.0.1:8080"
+            {}, "gemini", "https://generativelanguage.googleapis.com", self.PROXY
         )
-        assert result["models"]["providers"]["openai"]["baseUrl"] == "http://127.0.0.1:8080"
-        assert result["models"]["providers"]["openai"]["api"] == "openai-responses"
-        assert result["models"]["providers"]["openai"]["models"] == []
+        assert result["models"]["mode"] == "merge"
 
-    def test_patch_existing_config(self):
-        """Patching existing config preserves other providers."""
-        config = {
-            "models": {
-                "providers": {
-                    "anthropic": {"baseUrl": "https://api.anthropic.com"},
-                }
-            }
-        }
+    def test_patch_sets_api_type(self):
+        """Custom provider gets the correct OpenClaw API type."""
         result = _patch_openclaw_config(
-            config, "openai", "https://api.openai.com", "http://127.0.0.1:8080"
+            {}, "gemini", "https://generativelanguage.googleapis.com", self.PROXY
         )
-        assert result["models"]["providers"]["openai"]["baseUrl"] == "http://127.0.0.1:8080"
-        assert result["models"]["providers"]["openai"]["models"] == []
-        assert result["models"]["providers"]["anthropic"]["baseUrl"] == "https://api.anthropic.com"
-
-    def test_patch_overwrites_base_url(self):
-        """Patching overwrites existing baseUrl with proxy URL."""
-        config = {
-            "models": {
-                "providers": {
-                    "openai": {"baseUrl": "https://api.openai.com"},
-                }
-            }
-        }
-        result = _patch_openclaw_config(
-            config, "openai", "https://api.openai.com", "http://127.0.0.1:8080"
-        )
-        assert result["models"]["providers"]["openai"]["baseUrl"] == "http://127.0.0.1:8080"
-        assert result["models"]["providers"]["openai"]["models"] == []
-
-    def test_patch_already_proxied(self):
-        """Patching already-proxied config updates baseUrl idempotently."""
-        config = {
-            "models": {
-                "providers": {
-                    "openai": {
-                        "baseUrl": "http://127.0.0.1:8080",
-                        "api": "openai-responses",
-                    },
-                }
-            }
-        }
-        result = _patch_openclaw_config(
-            config, "openai", "https://api.openai.com", "http://127.0.0.1:8080"
-        )
-        assert result["models"]["providers"]["openai"]["baseUrl"] == "http://127.0.0.1:8080"
-
-    def test_patch_creates_models_key(self):
-        """Patching creates 'models' key if missing."""
-        config = {"some_other_key": "value"}
-        result = _patch_openclaw_config(
-            config, "openai", "https://api.openai.com", "http://localhost:8080"
-        )
-        assert "models" in result
-        assert "providers" in result["models"]
-
-    def test_patch_creates_providers_key(self):
-        """Patching creates 'providers' key if missing."""
-        config = {"models": {"settings": "value"}}
-        result = _patch_openclaw_config(
-            config, "openai", "https://api.openai.com", "http://localhost:8080"
-        )
-        assert "providers" in result["models"]
-
-    def test_patch_sets_api_type_for_known_providers(self):
-        """Patching sets the correct OpenClaw API type for known providers."""
-        for provider_name, expected_api in OPENCLAW_API_MAP.items():
-            config = {}
-            result = _patch_openclaw_config(
-                config, provider_name, "https://example.com", "http://127.0.0.1:8080"
-            )
-            assert result["models"]["providers"][provider_name]["api"] == expected_api
-
-    def test_patch_preserves_existing_api(self):
-        """Patching does not overwrite an existing api field."""
-        config = {
-            "models": {
-                "providers": {
-                    # user explicitly set this
-                    "openai": {"api": "openai-chat"},
-                }
-            }
-        }
-        result = _patch_openclaw_config(
-            config, "openai", "https://api.openai.com", "http://127.0.0.1:8080"
-        )
-        # Should keep user's explicit choice, not overwrite with default
-        assert result["models"]["providers"]["openai"]["api"] == "openai-chat"
-
-    def test_patch_unknown_provider_no_api(self):
-        """Patching with unknown provider does not set api field."""
-        config = {}
-        result = _patch_openclaw_config(
-            config, "custom_llm", "https://custom.example.com", "http://127.0.0.1:8080"
-        )
-        assert "api" not in result["models"]["providers"]["custom_llm"]
-        assert result["models"]["providers"]["custom_llm"]["baseUrl"] == "http://127.0.0.1:8080"
-
-    def test_patch_google_provider(self):
-        """Patching with 'google' provider sets API type (proxy handles /v1beta)."""
-        config = {}
-        result = _patch_openclaw_config(
-            config,
-            "google",
-            "https://generativelanguage.googleapis.com",
-            "http://127.0.0.1:8080",
-        )
-        provider = result["models"]["providers"]["google"]
-        assert provider["baseUrl"] == "http://127.0.0.1:8080"
+        provider = result["models"]["providers"]["sentinellm-gemini"]
         assert provider["api"] == "google-generative-ai"
 
-    def test_patch_preserves_other_config(self):
+    def test_patch_sets_api_key_env_ref(self):
+        """Custom provider includes apiKey as env var reference."""
+        result = _patch_openclaw_config({}, "openai", "https://api.openai.com", self.PROXY)
+        provider = result["models"]["providers"]["sentinellm-openai"]
+        assert provider["apiKey"] == "${OPENAI_API_KEY}"  # pragma: allowlist secret
+
+    def test_patch_ollama_uses_dummy_key(self):
+        """Ollama (no auth) gets a dummy apiKey value."""
+        result = _patch_openclaw_config({}, "ollama", "http://localhost:11434", self.PROXY)
+        provider = result["models"]["providers"]["sentinellm-ollama"]
+        assert provider["apiKey"] == "ollama-local"
+
+    def test_patch_includes_default_model_in_list(self):
+        """Custom provider has at least one model in its models list."""
+        result = _patch_openclaw_config(
+            {}, "gemini", "https://generativelanguage.googleapis.com", self.PROXY
+        )
+        provider = result["models"]["providers"]["sentinellm-gemini"]
+        assert isinstance(provider["models"], list)
+        assert len(provider["models"]) >= 1
+        assert provider["models"][0]["id"] == "gemini-2.0-flash"
+
+    def test_patch_sets_primary_model(self):
+        """agents.defaults.model.primary is set to the custom provider model ref."""
+        result = _patch_openclaw_config(
+            {}, "gemini", "https://generativelanguage.googleapis.com", self.PROXY
+        )
+        primary = result["agents"]["defaults"]["model"]["primary"]
+        assert primary == "sentinellm-gemini/gemini-2.0-flash"
+
+    def test_patch_adds_model_to_allowlist(self):
+        """Model ref is added to agents.defaults.models allowlist with alias."""
+        result = _patch_openclaw_config({}, "openai", "https://api.openai.com", self.PROXY)
+        allowlist = result["agents"]["defaults"]["models"]
+        assert "sentinellm-openai/gpt-4o" in allowlist
+        assert "alias" in allowlist["sentinellm-openai/gpt-4o"]
+
+    def test_patch_preserves_gateway_and_other_sections(self):
         """Patching preserves unrelated config sections."""
         config = {
-            "agents": {"defaults": {"model": {"primary": "google/gemini-2.5-flash"}}},
             "gateway": {"port": 18789},
+            "messages": {"ackReactionScope": "group-mentions"},
         }
         result = _patch_openclaw_config(
-            config,
-            "google",
-            "https://generativelanguage.googleapis.com",
-            "http://127.0.0.1:8080",
+            config, "gemini", "https://generativelanguage.googleapis.com", self.PROXY
         )
-        assert result["agents"]["defaults"]["model"]["primary"] == "google/gemini-2.5-flash"
         assert result["gateway"]["port"] == 18789
-        assert result["models"]["providers"]["google"]["baseUrl"] == "http://127.0.0.1:8080"
+        assert result["messages"]["ackReactionScope"] == "group-mentions"
 
-    def test_patch_preserves_provider_models(self):
-        """Patching preserves existing models array in provider."""
+    def test_patch_preserves_existing_custom_models(self):
+        """Re-patching preserves existing model entries in the provider's list."""
         config = {
             "models": {
                 "providers": {
-                    "google": {
-                        "baseUrl": "https://generativelanguage.googleapis.com",
+                    "sentinellm-gemini": {
+                        "baseUrl": self.PROXY,
                         "api": "google-generative-ai",
                         "models": [
-                            {"id": "gemini-2.5-flash", "name": "Gemini 2.5 Flash"},
+                            {"id": "gemini-2.5-pro", "name": "Gemini 2.5 Pro"},
                         ],
                     }
                 }
             }
         }
         result = _patch_openclaw_config(
-            config,
-            "google",
-            "https://generativelanguage.googleapis.com",
-            "http://127.0.0.1:8080",
+            config, "gemini", "https://generativelanguage.googleapis.com", self.PROXY
         )
-        provider = result["models"]["providers"]["google"]
-        assert provider["baseUrl"] == "http://127.0.0.1:8080"
-        assert provider["api"] == "google-generative-ai"
-        assert len(provider["models"]) == 1
-        assert provider["models"][0]["id"] == "gemini-2.5-flash"
+        models = result["models"]["providers"]["sentinellm-gemini"]["models"]
+        model_ids = [m["id"] for m in models]
+        # Both the existing custom model AND the default should be present
+        assert "gemini-2.5-pro" in model_ids
+        assert "gemini-2.0-flash" in model_ids
+
+    def test_patch_idempotent_on_default_model(self):
+        """Re-patching does not duplicate default model entry."""
+        config = {}
+        result1 = _patch_openclaw_config(
+            config, "gemini", "https://generativelanguage.googleapis.com", self.PROXY
+        )
+        result2 = _patch_openclaw_config(
+            result1, "gemini", "https://generativelanguage.googleapis.com", self.PROXY
+        )
+        models = result2["models"]["providers"]["sentinellm-gemini"]["models"]
+        ids = [m["id"] for m in models]
+        assert ids.count("gemini-2.0-flash") == 1  # no duplicate
+
+    def test_patch_all_known_providers(self):
+        """All providers in PROVIDER_DEFAULT_MODELS can be patched without error."""
+        for provider_id, info in PROVIDER_DEFAULT_MODELS.items():
+            config = {}
+            result = _patch_openclaw_config(config, provider_id, "https://example.com", self.PROXY)
+            custom = f"sentinellm-{provider_id}"
+            assert custom in result["models"]["providers"]
+            assert result["models"]["providers"][custom]["baseUrl"] == self.PROXY
+            model_ref = f"{custom}/{info['id']}"
+            assert result["agents"]["defaults"]["model"]["primary"] == model_ref
+
+    def test_patch_unknown_provider_uses_default_api(self):
+        """Unknown provider falls back to openai-completions api type."""
+        result = _patch_openclaw_config({}, "my-llm", "https://custom.example.com", self.PROXY)
+        provider = result["models"]["providers"]["sentinellm-my-llm"]
+        assert provider["api"] == "openai-completions"
+        assert provider["baseUrl"] == self.PROXY
 
 
 # ── Tests for print functions ───────────────────────────────────────────
@@ -454,20 +487,20 @@ class TestQuickConfigureOpenclaw:
             assert result is True
 
     def test_successful_configuration(self, tmp_path):
-        """Successfully patches OpenClaw config."""
+        """Successfully patches OpenClaw config with custom provider name."""
         config_file = tmp_path / "config.json5"
-        config_file.write_text(
-            json.dumps({"models": {"providers": {"openai": {"baseUrl": "https://api.openai.com"}}}})
-        )
+        config_file.write_text(json.dumps({}))
 
         with patch("src.cli.agent_config._find_agent_config", return_value=config_file):
             result = quick_configure_openclaw("openai")
             assert result is True
 
-            # Verify the config was patched
+            # Custom provider: sentinellm-openai, not the built-in 'openai'
             patched = json.loads(config_file.read_text())
-            assert patched["models"]["providers"]["openai"]["baseUrl"] == "http://127.0.0.1:8080"
-            assert patched["models"]["providers"]["openai"]["api"] == "openai-responses"
+            provider = patched["models"]["providers"]["sentinellm-openai"]
+            assert provider["baseUrl"] == "http://127.0.0.1:8080"
+            assert provider["api"] == "openai-responses"
+            assert patched["agents"]["defaults"]["model"]["primary"] == "sentinellm-openai/gpt-4o"
 
     def test_backup_created(self, tmp_path):
         """Backup file is created."""
@@ -489,8 +522,13 @@ class TestQuickConfigureOpenclaw:
             assert result is True
 
             patched = json.loads(config_file.read_text())
-            assert patched["models"]["providers"]["anthropic"]["baseUrl"] == "http://127.0.0.1:8080"
-            assert patched["models"]["providers"]["anthropic"]["api"] == "anthropic"
+            provider = patched["models"]["providers"]["sentinellm-anthropic"]
+            assert provider["baseUrl"] == "http://127.0.0.1:8080"
+            assert provider["api"] == "anthropic"
+            assert (
+                patched["agents"]["defaults"]["model"]["primary"]
+                == "sentinellm-anthropic/claude-sonnet-4-5"
+            )
 
     def test_multi_provider_list(self, tmp_path):
         """Configure multiple providers at once."""
@@ -503,12 +541,12 @@ class TestQuickConfigureOpenclaw:
 
             patched = json.loads(config_file.read_text())
             providers = patched["models"]["providers"]
-            assert providers["openai"]["baseUrl"] == "http://127.0.0.1:8080"
-            assert providers["openai"]["api"] == "openai-responses"
-            assert providers["anthropic"]["baseUrl"] == "http://127.0.0.1:8080"
-            assert providers["anthropic"]["api"] == "anthropic"
-            assert providers["gemini"]["baseUrl"] == "http://127.0.0.1:8080"
-            assert providers["gemini"]["api"] == "google-generative-ai"
+            assert providers["sentinellm-openai"]["baseUrl"] == "http://127.0.0.1:8080"
+            assert providers["sentinellm-openai"]["api"] == "openai-responses"
+            assert providers["sentinellm-anthropic"]["baseUrl"] == "http://127.0.0.1:8080"
+            assert providers["sentinellm-anthropic"]["api"] == "anthropic"
+            assert providers["sentinellm-gemini"]["baseUrl"] == "http://127.0.0.1:8080"
+            assert providers["sentinellm-gemini"]["api"] == "google-generative-ai"
 
     def test_multi_provider_skips_unknown(self, tmp_path, capsys):
         """Multi-provider skips unknown providers with warning."""
@@ -520,7 +558,8 @@ class TestQuickConfigureOpenclaw:
             assert result is True
 
             patched = json.loads(config_file.read_text())
-            assert "openai" in patched["models"]["providers"]
+            assert "sentinellm-openai" in patched["models"]["providers"]
+            assert "sentinellm-unknown_llm" not in patched["models"]["providers"]
             assert "unknown_llm" not in patched["models"]["providers"]
 
             captured = capsys.readouterr()
@@ -546,7 +585,20 @@ class TestDetectExistingProviders:
         assert _detect_existing_providers({"models": {}}) == set()
 
     def test_existing_providers(self):
-        """Detects existing providers."""
+        """Detects sentinellm-prefixed providers and strips the prefix."""
+        config = {
+            "models": {
+                "providers": {
+                    "sentinellm-google": {"baseUrl": "http://127.0.0.1:8080"},
+                    "sentinellm-openai": {"baseUrl": "http://127.0.0.1:8080"},
+                }
+            }
+        }
+        result = _detect_existing_providers(config)
+        assert result == {"google", "openai"}
+
+    def test_detects_plain_provider_names(self):
+        """Also detects plain provider names (manually configured entries)."""
         config = {
             "models": {
                 "providers": {
