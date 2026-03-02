@@ -347,6 +347,7 @@ def _patch_openclaw_config(
     proxy_url: str,
     model_id: str | None = None,
     model_name: str | None = None,
+    api_key_value: str | None = None,
 ) -> dict[str, Any]:
     """Patch an OpenClaw config dict to route through SentineLLM.
 
@@ -364,6 +365,10 @@ def _patch_openclaw_config(
       proxy_url: SentineLLM proxy URL.
       model_id: Override the default model ID (e.g., "gemini-2.5-flash").
       model_name: Override the default display name for the model.
+      api_key_value: If provided, write this literal API key instead of
+                     an env var reference (``${VAR}``).  This avoids the
+                     ``MissingEnvVarError`` that OpenClaw raises when the
+                     env var does not exist.
 
     Config written:
       models.mode = "merge"
@@ -407,6 +412,48 @@ def _patch_openclaw_config(
 
     providers = config_data["models"]["providers"]
 
+    # ── Try to recover existing API key from config ────────────────────
+    # When the user originally configured OpenClaw, the API key may have
+    # been stored as a literal value (e.g. "AIzaSy...") in a built-in or
+    # custom provider.  We look in these places (in order of priority):
+    #   1. Explicit `api_key_value` parameter (from _ensure_api_keys)
+    #   2. Existing `sentinellm-{provider}` entry (re-patching)
+    #   3. Built-in provider that matches `provider_name` (first install)
+    #   4. Current environment variable
+    #   5. Fallback: env var reference `${VAR}` (may cause OpenClaw error)
+    resolved_api_key: str | None = api_key_value
+    if not resolved_api_key:
+        # Check our own custom provider first
+        existing_entry = providers.get(custom_provider, {})
+        existing_key = existing_entry.get("apiKey", "")
+        if existing_key and not existing_key.startswith("${"):
+            resolved_api_key = existing_key
+
+    if not resolved_api_key:
+        # Check built-in / original providers that OpenClaw may have
+        # E.g. "google", "gemini", "openai", provider_name itself
+        candidate_names = [provider_name]
+        # Map our provider_name to common OpenClaw built-in names
+        builtin_aliases = {
+            "gemini": ["google", "gemini", "google-generative-ai"],
+            "google": ["google", "gemini", "google-generative-ai"],
+            "openai": ["openai"],
+            "anthropic": ["anthropic"],
+        }
+        candidate_names = builtin_aliases.get(provider_name, [provider_name])
+        for candidate in candidate_names:
+            candidate_entry = providers.get(candidate, {})
+            candidate_key = candidate_entry.get("apiKey", "")
+            if candidate_key and not candidate_key.startswith("${"):
+                resolved_api_key = candidate_key
+                break
+
+    if not resolved_api_key and model_info.get("api_key_env"):
+        # Check if the env var actually exists in the environment
+        env_value = os.environ.get(str(model_info["api_key_env"]), "")
+        if env_value:
+            resolved_api_key = env_value
+
     # Build provider entry — preserve existing custom model list if present
     existing_models: list = []
     if custom_provider in providers and isinstance(providers[custom_provider].get("models"), list):
@@ -422,7 +469,13 @@ def _patch_openclaw_config(
         "models": existing_models,
     }
     if model_info.get("api_key_env"):
-        provider_entry["apiKey"] = f"${{{model_info['api_key_env']}}}"  # pragma: allowlist secret
+        # Use resolved literal key if available, otherwise fall back to env var reference
+        if resolved_api_key:
+            provider_entry["apiKey"] = resolved_api_key  # pragma: allowlist secret
+        else:
+            provider_entry["apiKey"] = (
+                f"${{{model_info['api_key_env']}}}"  # pragma: allowlist secret
+            )
     elif provider_name == "ollama":
         provider_entry["apiKey"] = "ollama-local"
 
@@ -632,6 +685,9 @@ def configure_agent_interactive(
             chosen_model_id, chosen_model_name = _select_model_for_provider(provider_id)
             provider_models[provider_id] = (chosen_model_id, chosen_model_name)
 
+        # Ensure API keys are available for each provider
+        provider_api_keys = _ensure_api_keys_configured(selected_providers)
+
         # Patch all selected providers
         for provider_id in selected_providers:
             preset = PROVIDER_PRESETS[provider_id]
@@ -643,6 +699,7 @@ def configure_agent_interactive(
                 proxy_url,
                 model_id=mid,
                 model_name=mname,
+                api_key_value=provider_api_keys.get(provider_id),
             )
             print(f"  🔌 {preset['name']} ({mid}) → {proxy_url}")
 
@@ -690,6 +747,83 @@ def configure_agent_interactive(
         "proxy_url": proxy_url,
         "config_path": str(config_path) if config_path else None,
     }
+
+
+def _ensure_api_keys_configured(
+    provider_ids: list[str],
+) -> dict[str, str | None]:
+    """Check that required API key env vars exist; prompt for missing ones.
+
+    For each provider that needs an API key, checks if the corresponding
+    environment variable (e.g. ``GEMINI_API_KEY``) is set.  If not, asks
+    the user to enter the key interactively.  The entered key is:
+
+      1. Written to ``~/.sentinellm.env`` (loaded by the proxy).
+      2. Set in the current process environment (for subsequent checks).
+      3. Returned so the caller can write it as a **literal** value in the
+         OpenClaw config — avoiding the ``MissingEnvVarError`` that OpenClaw
+         raises when an ``${ENV_VAR}`` reference cannot be resolved.
+
+    Returns:
+        dict mapping provider_id → literal API key string (or ``None`` if
+        the env var already existed and no literal override is needed).
+    """
+    result: dict[str, str | None] = {}
+    env_path = Path.home() / ".sentinellm.env"
+
+    for pid in provider_ids:
+        model_info = PROVIDER_DEFAULT_MODELS.get(pid, {})
+        env_var = model_info.get("api_key_env")
+
+        if not env_var:
+            # Provider doesn't need an API key (e.g. ollama)
+            result[pid] = None
+            continue
+
+        existing_value = os.environ.get(env_var)
+        if existing_value:
+            # Env var already set — no override needed
+            result[pid] = None
+            continue
+
+        # Env var missing — ask the user
+        preset_name = PROVIDER_PRESETS.get(pid, {}).get("name", pid)
+        print(f"\n  ⚠️  Variable de entorno {env_var} no encontrada.")
+        print(f"     OpenClaw necesita esta clave para conectar con {preset_name}.")
+
+        if questionary is None:
+            print(f"     Por favor establece: export {env_var}=tu-clave")
+            result[pid] = None
+            continue
+
+        api_key = questionary.password(
+            f"  🔑 Introduce tu API key de {preset_name} ({env_var}):",
+            style=CUSTOM_STYLE,
+        ).ask()
+
+        if not api_key or not api_key.strip():
+            print(f"     ⏭️  Omitido. Recuerda establecer {env_var} antes de usar OpenClaw.")
+            result[pid] = None
+            continue
+
+        api_key = api_key.strip()
+
+        # Set in current process for any further checks
+        os.environ[env_var] = api_key
+
+        # Append to ~/.sentinellm.env (so the proxy also picks it up)
+        try:
+            with open(env_path, "a", encoding="utf-8") as f:
+                f.write(f"\n# {preset_name} API key (added by sllm agent)\n")
+                f.write(f"{env_var}={api_key}\n")
+            print(f"     ✅ Guardada en {env_path}")
+        except OSError:
+            pass
+
+        # Return literal value so it's written directly in openclaw.json
+        result[pid] = api_key  # pragma: allowlist secret
+
+    return result
 
 
 def _select_model_for_provider(provider_id: str) -> tuple[str, str]:

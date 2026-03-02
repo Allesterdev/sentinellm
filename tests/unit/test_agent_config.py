@@ -11,6 +11,7 @@ from src.cli.agent_config import (
     PROVIDER_PRESETS,
     _create_openclaw_default_config,
     _detect_existing_providers,
+    _ensure_api_keys_configured,
     _find_agent_config,
     _get_proxy_url,
     _patch_openclaw_config,
@@ -111,6 +112,225 @@ class TestSelectModelForProvider:
         with patch("src.cli.agent_config.questionary", None):
             model_id, model_name = _select_model_for_provider("unknown-provider")
             assert model_id == "default-model"
+
+
+# ── Tests for _ensure_api_keys_configured ───────────────────────────────
+
+
+class TestEnsureApiKeysConfigured:
+    """Tests for _ensure_api_keys_configured."""
+
+    def test_env_var_already_set(self):
+        """When env var exists, returns None (no override needed)."""
+        with patch.dict(os.environ, {"GEMINI_API_KEY": "existing-key"}):  # pragma: allowlist secret
+            result = _ensure_api_keys_configured(["gemini"])
+            assert result["gemini"] is None
+
+    def test_ollama_needs_no_key(self):
+        """Ollama has no api_key_env — returns None."""
+        result = _ensure_api_keys_configured(["ollama"])
+        assert result["ollama"] is None
+
+    def test_missing_env_var_without_questionary(self):
+        """Without questionary, returns None and prints warning."""
+        with (
+            patch.dict(os.environ, {}, clear=True),
+            patch("src.cli.agent_config.questionary", None),
+        ):
+            # Remove GEMINI_API_KEY if present
+            os.environ.pop("GEMINI_API_KEY", None)
+            result = _ensure_api_keys_configured(["gemini"])
+            assert result["gemini"] is None
+
+    def test_missing_env_var_user_enters_key(self, tmp_path):
+        """When env var missing and user enters key, returns literal value."""
+        mock_password = patch(
+            "src.cli.agent_config.questionary.password",
+        )
+        with (
+            patch.dict(os.environ, {}, clear=True),
+            mock_password as mock_pw,
+            patch("src.cli.agent_config.Path") as mock_path_cls,
+        ):
+            os.environ.pop("GEMINI_API_KEY", None)
+            mock_pw.return_value.ask.return_value = "test-api-key-123"
+            mock_path_cls.home.return_value = tmp_path
+            result = _ensure_api_keys_configured(["gemini"])
+            assert result["gemini"] == "test-api-key-123"
+            # Also sets in os.environ
+            assert os.environ.get("GEMINI_API_KEY") == "test-api-key-123"
+
+    def test_missing_env_var_user_skips(self):
+        """When user enters empty key, returns None."""
+        mock_password = patch(
+            "src.cli.agent_config.questionary.password",
+        )
+        with (
+            patch.dict(os.environ, {}, clear=True),
+            mock_password as mock_pw,
+        ):
+            os.environ.pop("GEMINI_API_KEY", None)
+            mock_pw.return_value.ask.return_value = ""
+            result = _ensure_api_keys_configured(["gemini"])
+            assert result["gemini"] is None
+
+    def test_multiple_providers_mixed(self):
+        """Handles multiple providers with different states."""
+        with patch.dict(
+            os.environ,
+            {"OPENAI_API_KEY": "existing"},  # pragma: allowlist secret
+            clear=True,
+        ):
+            os.environ.pop("GEMINI_API_KEY", None)
+            with patch("src.cli.agent_config.questionary", None):
+                result = _ensure_api_keys_configured(["openai", "gemini", "ollama"])
+                assert result["openai"] is None  # already set
+                assert result["gemini"] is None  # no questionary
+                assert result["ollama"] is None  # no key needed
+
+
+# ── Tests for _patch_openclaw_config with api_key_value ─────────────────
+
+
+class TestPatchWithApiKeyValue:
+    """Tests for _patch_openclaw_config with literal API key."""
+
+    PROXY = "http://127.0.0.1:8080"
+
+    def test_literal_api_key_written(self):
+        """When api_key_value is given, it's written as literal (no env ref)."""
+        result = _patch_openclaw_config(
+            {},
+            "gemini",
+            "https://generativelanguage.googleapis.com",
+            self.PROXY,
+            api_key_value="my-literal-key-123",  # pragma: allowlist secret
+        )
+        provider = result["models"]["providers"]["sentinellm-gemini"]
+        assert provider["apiKey"] == "my-literal-key-123"
+        assert "${" not in provider["apiKey"]
+
+    def test_env_ref_when_no_key_anywhere(self):
+        """Falls back to env var reference only when no key found anywhere."""
+        with patch.dict(os.environ, {}, clear=True):
+            os.environ.pop("GEMINI_API_KEY", None)
+            result = _patch_openclaw_config(
+                {},
+                "gemini",
+                "https://generativelanguage.googleapis.com",
+                self.PROXY,
+            )
+        provider = result["models"]["providers"]["sentinellm-gemini"]
+        assert provider["apiKey"] == "${GEMINI_API_KEY}"
+
+    def test_recovers_key_from_builtin_google_provider(self):
+        """Extracts literal API key from existing 'google' built-in provider."""
+        config = {
+            "models": {
+                "providers": {
+                    "google": {
+                        "apiKey": "AIzaSyLiteralKey123",  # pragma: allowlist secret
+                        "baseUrl": "https://generativelanguage.googleapis.com",
+                    }
+                }
+            }
+        }
+        with patch.dict(os.environ, {}, clear=True):
+            os.environ.pop("GEMINI_API_KEY", None)
+            result = _patch_openclaw_config(
+                config,
+                "gemini",
+                "https://generativelanguage.googleapis.com",
+                self.PROXY,
+            )
+        provider = result["models"]["providers"]["sentinellm-gemini"]
+        assert provider["apiKey"] == "AIzaSyLiteralKey123"
+        assert "${" not in provider["apiKey"]
+
+    def test_recovers_key_from_existing_sentinellm_provider(self):
+        """Preserves literal key from existing sentinellm-gemini entry (re-patch)."""
+        config = {
+            "models": {
+                "providers": {
+                    "sentinellm-gemini": {
+                        "apiKey": "AIzaSyPreviousKey456",  # pragma: allowlist secret
+                        "baseUrl": self.PROXY,
+                        "api": "google-generative-ai",
+                        "models": [],
+                    }
+                }
+            }
+        }
+        with patch.dict(os.environ, {}, clear=True):
+            os.environ.pop("GEMINI_API_KEY", None)
+            result = _patch_openclaw_config(
+                config,
+                "gemini",
+                "https://generativelanguage.googleapis.com",
+                self.PROXY,
+            )
+        provider = result["models"]["providers"]["sentinellm-gemini"]
+        assert provider["apiKey"] == "AIzaSyPreviousKey456"
+
+    def test_ignores_env_var_reference_in_existing_config(self):
+        """Existing ${VAR} reference is NOT treated as a literal key."""
+        config = {
+            "models": {
+                "providers": {
+                    "google": {
+                        "apiKey": "${GEMINI_API_KEY}",
+                    }
+                }
+            }
+        }
+        with patch.dict(os.environ, {}, clear=True):
+            os.environ.pop("GEMINI_API_KEY", None)
+            result = _patch_openclaw_config(
+                config,
+                "gemini",
+                "https://generativelanguage.googleapis.com",
+                self.PROXY,
+            )
+        provider = result["models"]["providers"]["sentinellm-gemini"]
+        # Falls back to env var ref since existing was also a ref
+        assert provider["apiKey"] == "${GEMINI_API_KEY}"
+
+    def test_recovers_key_from_env_var(self):
+        """Uses env var value as literal if it exists in environment."""
+        with patch.dict(
+            os.environ, {"GEMINI_API_KEY": "AIzaFromEnv789"}
+        ):  # pragma: allowlist secret
+            result = _patch_openclaw_config(
+                {},
+                "gemini",
+                "https://generativelanguage.googleapis.com",
+                self.PROXY,
+            )
+        provider = result["models"]["providers"]["sentinellm-gemini"]
+        assert provider["apiKey"] == "AIzaFromEnv789"
+        assert "${" not in provider["apiKey"]
+
+    def test_explicit_api_key_value_takes_priority(self):
+        """Explicit api_key_value param wins over all other sources."""
+        config = {
+            "models": {
+                "providers": {
+                    "google": {
+                        "apiKey": "AIzaSyFromConfig",  # pragma: allowlist secret
+                    }
+                }
+            }
+        }
+        with patch.dict(os.environ, {"GEMINI_API_KEY": "AIzaFromEnv"}):  # pragma: allowlist secret
+            result = _patch_openclaw_config(
+                config,
+                "gemini",
+                "https://generativelanguage.googleapis.com",
+                self.PROXY,
+                api_key_value="AIzaSyExplicit",  # pragma: allowlist secret
+            )
+        provider = result["models"]["providers"]["sentinellm-gemini"]
+        assert provider["apiKey"] == "AIzaSyExplicit"
 
 
 # ── Tests for _find_agent_config ────────────────────────────────────────
