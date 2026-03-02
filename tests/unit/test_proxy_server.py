@@ -1077,3 +1077,76 @@ class TestStreamingSupport:
             assert response.status_code == 200
             # Verify regular request was used
             mock_client.request.assert_called_once()
+
+    def test_streaming_handles_client_disconnect_gracefully(self):
+        """httpx.ReadError during streaming should not crash the proxy.
+
+        This happens when the client (e.g. OpenClaw) closes the connection
+        after receiving the final SSE event but the upstream hasn't fully
+        closed the HTTP/1.1 chunked stream yet.
+        """
+        app = create_proxy_app(target_url="https://generativelanguage.googleapis.com")
+        client = TestClient(app, raise_server_exceptions=False)
+
+        mock_response = AsyncMock()
+        mock_response.status_code = 200
+        mock_response.headers = {"content-type": "text/event-stream"}
+
+        # Simulate: yield one chunk, then upstream read fails
+        async def mock_aiter_raw():
+            yield b'data: {"candidates": [{"content": {"parts": [{"text": "Hello"}]}}]}\n\n'
+            raise httpx.ReadError("peer closed connection")
+
+        mock_response.aiter_raw = mock_aiter_raw
+        mock_response.aclose = AsyncMock()
+
+        with patch("httpx.AsyncClient") as mock_client_cls:
+            mock_client = AsyncMock()
+            mock_client.build_request = MagicMock(return_value=MagicMock())
+            mock_client.send = AsyncMock(return_value=mock_response)
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock(return_value=False)
+            mock_client_cls.return_value = mock_client
+
+            response = client.post(
+                "/models/gemini-2.5-flash:streamGenerateContent?alt=sse",
+                json={"contents": [{"parts": [{"text": "Hello"}]}]},
+            )
+
+            # Should return 200, not crash
+            assert response.status_code == 200
+            assert b"Hello" in response.content
+            # Ensure response was properly closed
+            mock_response.aclose.assert_called_once()
+
+    def test_streaming_handles_stream_error_gracefully(self):
+        """httpx.StreamError variants should also be caught."""
+        app = create_proxy_app(target_url="https://api.openai.com")
+        client = TestClient(app, raise_server_exceptions=False)
+
+        mock_response = AsyncMock()
+        mock_response.status_code = 200
+        mock_response.headers = {"content-type": "text/event-stream"}
+
+        async def mock_aiter_raw():
+            yield b"data: [DONE]\n\n"
+            raise httpx.StreamError("stream closed")
+
+        mock_response.aiter_raw = mock_aiter_raw
+        mock_response.aclose = AsyncMock()
+
+        with patch("httpx.AsyncClient") as mock_client_cls:
+            mock_client = AsyncMock()
+            mock_client.build_request = MagicMock(return_value=MagicMock())
+            mock_client.send = AsyncMock(return_value=mock_response)
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock(return_value=False)
+            mock_client_cls.return_value = mock_client
+
+            response = client.post(
+                "/v1/chat/completions?stream=true",
+                json={"model": "gpt-4", "messages": [{"role": "user", "content": "Hi"}]},
+            )
+
+            assert response.status_code == 200
+            mock_response.aclose.assert_called_once()

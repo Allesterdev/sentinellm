@@ -396,6 +396,12 @@ def create_proxy_app(
                         try:
                             async for chunk in resp.aiter_raw():
                                 yield chunk
+                        except (httpx.ReadError, httpx.StreamError):
+                            # Client (e.g. OpenClaw) closed connection before
+                            # upstream finished streaming — this is normal for
+                            # SSE streams where the client gets the final event
+                            # and disconnects.
+                            logger.debug("Upstream stream closed (client likely disconnected)")
                         finally:
                             # Ensure response is closed after streaming
                             await resp.aclose()
