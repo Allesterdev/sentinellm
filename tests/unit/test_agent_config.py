@@ -7,6 +7,7 @@ from unittest.mock import patch
 from src.cli.agent_config import (
     KNOWN_AGENTS,
     PROVIDER_DEFAULT_MODELS,
+    PROVIDER_MODELS,
     PROVIDER_PRESETS,
     _create_openclaw_default_config,
     _detect_existing_providers,
@@ -17,6 +18,7 @@ from src.cli.agent_config import (
     _print_manual_instructions,
     _print_multi_provider_summary,
     _read_json5_file,
+    _select_model_for_provider,
     _write_json_file,
     quick_configure_openclaw,
 )
@@ -62,6 +64,53 @@ class TestConstants:
         assert agent["url_field"] == "baseUrl"
         assert agent["providers_path"] == ["models", "providers"]
         assert any("config.json5" in p for p in agent["config_paths"])
+
+    def test_provider_models_catalog_exists(self):
+        """PROVIDER_MODELS has entries for main providers."""
+        assert "openai" in PROVIDER_MODELS
+        assert "gemini" in PROVIDER_MODELS
+        assert "anthropic" in PROVIDER_MODELS
+        assert "ollama" in PROVIDER_MODELS
+        for _pid, models_list in PROVIDER_MODELS.items():
+            assert isinstance(models_list, list)
+            assert len(models_list) >= 1
+            for m in models_list:
+                assert "id" in m
+                assert "name" in m
+
+    def test_provider_default_matches_catalog(self):
+        """Default model for each provider exists in PROVIDER_MODELS catalog."""
+        for pid, default_info in PROVIDER_DEFAULT_MODELS.items():
+            if pid in PROVIDER_MODELS:
+                catalog_ids = [m["id"] for m in PROVIDER_MODELS[pid]]
+                assert default_info["id"] in catalog_ids, (
+                    f"Default model {default_info['id']} for {pid} not in PROVIDER_MODELS catalog"
+                )
+
+    def test_gemini_default_is_2_5_flash(self):
+        """Gemini default model should be gemini-2.5-flash."""
+        assert PROVIDER_DEFAULT_MODELS["gemini"]["id"] == "gemini-2.5-flash"
+        assert PROVIDER_DEFAULT_MODELS["google"]["id"] == "gemini-2.5-flash"
+
+
+# ── Tests for _select_model_for_provider ────────────────────────────────
+
+
+class TestSelectModelForProvider:
+    """Tests for _select_model_for_provider."""
+
+    def test_fallback_without_questionary(self):
+        """Returns default model when questionary is unavailable."""
+        with patch("src.cli.agent_config.questionary", None):
+            model_id, model_name = _select_model_for_provider("gemini")
+            assert model_id == "gemini-2.5-flash"
+            assert "SentineLLM" in model_name
+
+    def test_fallback_for_unknown_provider(self):
+        """Returns default-model for unknown providers."""
+        with patch("src.cli.agent_config.questionary", None):
+            model_id, model_name = _select_model_for_provider("unknown-provider")
+            assert model_id == "default-model"
 
 
 # ── Tests for _find_agent_config ────────────────────────────────────────
@@ -353,7 +402,7 @@ class TestPatchOpenclawConfig:
         provider = result["models"]["providers"]["sentinellm-gemini"]
         assert isinstance(provider["models"], list)
         assert len(provider["models"]) >= 1
-        assert provider["models"][0]["id"] == "gemini-2.0-flash"
+        assert provider["models"][0]["id"] == "gemini-2.5-flash"
 
     def test_patch_sets_primary_model(self):
         """agents.defaults.model.primary is set to the custom provider model ref."""
@@ -361,7 +410,7 @@ class TestPatchOpenclawConfig:
             {}, "gemini", "https://generativelanguage.googleapis.com", self.PROXY
         )
         primary = result["agents"]["defaults"]["model"]["primary"]
-        assert primary == "sentinellm-gemini/gemini-2.0-flash"
+        assert primary == "sentinellm-gemini/gemini-2.5-flash"
 
     def test_patch_adds_model_to_allowlist(self):
         """Model ref is added to agents.defaults.models allowlist with alias."""
@@ -404,7 +453,7 @@ class TestPatchOpenclawConfig:
         model_ids = [m["id"] for m in models]
         # Both the existing custom model AND the default should be present
         assert "gemini-2.5-pro" in model_ids
-        assert "gemini-2.0-flash" in model_ids
+        assert "gemini-2.5-flash" in model_ids
 
     def test_patch_idempotent_on_default_model(self):
         """Re-patching does not duplicate default model entry."""
@@ -417,7 +466,7 @@ class TestPatchOpenclawConfig:
         )
         models = result2["models"]["providers"]["sentinellm-gemini"]["models"]
         ids = [m["id"] for m in models]
-        assert ids.count("gemini-2.0-flash") == 1  # no duplicate
+        assert ids.count("gemini-2.5-flash") == 1  # no duplicate
 
     def test_patch_all_known_providers(self):
         """All providers in PROVIDER_DEFAULT_MODELS can be patched without error."""
@@ -436,6 +485,48 @@ class TestPatchOpenclawConfig:
         provider = result["models"]["providers"]["sentinellm-my-llm"]
         assert provider["api"] == "openai-completions"
         assert provider["baseUrl"] == self.PROXY
+
+    def test_patch_with_model_id_override(self):
+        """Custom model_id overrides the default model."""
+        result = _patch_openclaw_config(
+            {},
+            "gemini",
+            "https://generativelanguage.googleapis.com",
+            self.PROXY,
+            model_id="gemini-2.5-flash",
+            model_name="Gemini 2.5 Flash (via SentineLLM)",
+        )
+        provider = result["models"]["providers"]["sentinellm-gemini"]
+        assert provider["models"][0]["id"] == "gemini-2.5-flash"
+        primary = result["agents"]["defaults"]["model"]["primary"]
+        assert primary == "sentinellm-gemini/gemini-2.5-flash"
+
+    def test_patch_with_model_id_auto_name(self):
+        """model_id without model_name auto-generates a display name."""
+        result = _patch_openclaw_config(
+            {},
+            "openai",
+            "https://api.openai.com",
+            self.PROXY,
+            model_id="gpt-4.1-mini",
+        )
+        provider = result["models"]["providers"]["sentinellm-openai"]
+        assert provider["models"][0]["id"] == "gpt-4.1-mini"
+        assert "gpt-4.1-mini" in provider["models"][0]["name"]
+        primary = result["agents"]["defaults"]["model"]["primary"]
+        assert primary == "sentinellm-openai/gpt-4.1-mini"
+
+    def test_patch_model_override_does_not_mutate_global(self):
+        """model_id override does not modify PROVIDER_DEFAULT_MODELS."""
+        original_id = PROVIDER_DEFAULT_MODELS["gemini"]["id"]
+        _patch_openclaw_config(
+            {},
+            "gemini",
+            "https://generativelanguage.googleapis.com",
+            self.PROXY,
+            model_id="gemini-custom-xyz",
+        )
+        assert PROVIDER_DEFAULT_MODELS["gemini"]["id"] == original_id
 
 
 # ── Tests for print functions ───────────────────────────────────────────

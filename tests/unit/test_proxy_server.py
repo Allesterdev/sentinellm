@@ -987,6 +987,70 @@ class TestStreamingSupport:
             # Verify cleanup was still called despite error
             mock_response.aclose.assert_called_once()
 
+    def test_query_params_forwarded_in_streaming(self):
+        """Query params like ?alt=sse&key=xxx must be forwarded to upstream."""
+        app = create_proxy_app(target_url="https://generativelanguage.googleapis.com")
+        client = TestClient(app, raise_server_exceptions=False)
+
+        mock_response = AsyncMock()
+        mock_response.status_code = 200
+        mock_response.headers = {"content-type": "text/event-stream"}
+
+        async def mock_aiter_raw():
+            yield b"data: chunk\n\n"
+
+        mock_response.aiter_raw = mock_aiter_raw
+        mock_response.aclose = AsyncMock()
+
+        with patch("httpx.AsyncClient") as mock_client_cls:
+            mock_client = AsyncMock()
+            mock_client.build_request = MagicMock(return_value=MagicMock())
+            mock_client.send = AsyncMock(return_value=mock_response)
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock(return_value=False)
+            mock_client_cls.return_value = mock_client
+
+            response = client.post(
+                "/v1beta/models/gemini-2.0-flash:streamGenerateContent?alt=sse&key=test123",
+                json={"contents": [{"parts": [{"text": "Hello"}]}]},
+            )
+
+            assert response.status_code == 200
+            # Verify the URL forwarded to upstream includes query params
+            build_call = mock_client.build_request.call_args
+            forwarded_url = build_call.kwargs.get("url") or build_call[1].get("url", "")
+            assert "alt=sse" in forwarded_url, f"alt=sse missing from: {forwarded_url}"
+            assert "key=test123" in forwarded_url, f"key= missing from: {forwarded_url}"
+
+    def test_query_params_forwarded_in_non_streaming(self):
+        """Query params must be forwarded in non-streaming requests too."""
+        app = create_proxy_app(target_url="https://generativelanguage.googleapis.com")
+        client = TestClient(app, raise_server_exceptions=False)
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.content = json.dumps(
+            {"candidates": [{"content": {"parts": [{"text": "Paris"}]}}]}
+        ).encode()
+        mock_response.headers = {"content-type": "application/json"}
+
+        with patch("httpx.AsyncClient") as mock_client_cls:
+            mock_client = AsyncMock()
+            mock_client.request = AsyncMock(return_value=mock_response)
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock(return_value=False)
+            mock_client_cls.return_value = mock_client
+
+            response = client.post(
+                "/v1beta/models/gemini-2.0-flash:generateContent?key=test456",
+                json={"contents": [{"parts": [{"text": "Capital of France?"}]}]},
+            )
+
+            assert response.status_code == 200
+            req_call = mock_client.request.call_args
+            forwarded_url = req_call.kwargs.get("url") or req_call[1].get("url", "")
+            assert "key=test456" in forwarded_url, f"key= missing from: {forwarded_url}"
+
     def test_non_streaming_request_uses_regular_flow(self):
         """Request without streaming params should use regular validation flow."""
         app = create_proxy_app(target_url="https://api.openai.com")

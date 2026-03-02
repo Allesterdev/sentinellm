@@ -142,13 +142,13 @@ PROVIDER_DEFAULT_MODELS: dict[str, dict[str, str | None]] = {
         "api_key_env": "ANTHROPIC_API_KEY",  # pragma: allowlist secret
     },
     "gemini": {
-        "id": "gemini-2.0-flash",
-        "name": "Gemini 2.0 Flash (via SentineLLM)",
+        "id": "gemini-2.5-flash",
+        "name": "Gemini 2.5 Flash (via SentineLLM)",
         "api_key_env": "GEMINI_API_KEY",  # pragma: allowlist secret
     },
     "google": {
-        "id": "gemini-2.0-flash",
-        "name": "Gemini 2.0 Flash (via SentineLLM)",
+        "id": "gemini-2.5-flash",
+        "name": "Gemini 2.5 Flash (via SentineLLM)",
         "api_key_env": "GEMINI_API_KEY",  # pragma: allowlist secret
     },
     "ollama": {
@@ -166,6 +166,50 @@ PROVIDER_DEFAULT_MODELS: dict[str, dict[str, str | None]] = {
         "name": "GPT-4o Azure (via SentineLLM)",
         "api_key_env": "AZURE_OPENAI_API_KEY",  # pragma: allowlist secret
     },
+}
+
+# Available models per provider (for interactive selection)
+PROVIDER_MODELS: dict[str, list[dict[str, str]]] = {
+    "openai": [
+        {"id": "gpt-4o", "name": "GPT-4o"},
+        {"id": "gpt-4o-mini", "name": "GPT-4o Mini"},
+        {"id": "gpt-4.1", "name": "GPT-4.1"},
+        {"id": "gpt-4.1-mini", "name": "GPT-4.1 Mini"},
+        {"id": "o3-mini", "name": "o3-mini"},
+    ],
+    "anthropic": [
+        {"id": "claude-sonnet-4-5", "name": "Claude Sonnet 4.5"},
+        {"id": "claude-3-5-haiku-latest", "name": "Claude 3.5 Haiku"},
+        {"id": "claude-3-opus-latest", "name": "Claude 3 Opus"},
+    ],
+    "gemini": [
+        {"id": "gemini-2.5-flash", "name": "Gemini 2.5 Flash"},
+        {"id": "gemini-2.5-pro", "name": "Gemini 2.5 Pro"},
+        {"id": "gemini-2.0-flash", "name": "Gemini 2.0 Flash"},
+        {"id": "gemini-2.0-flash-lite", "name": "Gemini 2.0 Flash Lite"},
+    ],
+    "google": [
+        {"id": "gemini-2.5-flash", "name": "Gemini 2.5 Flash"},
+        {"id": "gemini-2.5-pro", "name": "Gemini 2.5 Pro"},
+        {"id": "gemini-2.0-flash", "name": "Gemini 2.0 Flash"},
+        {"id": "gemini-2.0-flash-lite", "name": "Gemini 2.0 Flash Lite"},
+    ],
+    "ollama": [
+        {"id": "llama3.3", "name": "Llama 3.3"},
+        {"id": "llama3.2", "name": "Llama 3.2"},
+        {"id": "mistral", "name": "Mistral 7B"},
+        {"id": "codellama", "name": "Code Llama"},
+        {"id": "deepseek-coder-v2", "name": "DeepSeek Coder V2"},
+    ],
+    "openrouter": [
+        {"id": "anthropic/claude-sonnet-4-5", "name": "Claude Sonnet 4.5"},
+        {"id": "openai/gpt-4o", "name": "GPT-4o"},
+        {"id": "google/gemini-2.5-flash", "name": "Gemini 2.5 Flash"},
+    ],
+    "azure": [
+        {"id": "gpt-4o", "name": "GPT-4o"},
+        {"id": "gpt-4o-mini", "name": "GPT-4o Mini"},
+    ],
 }
 
 
@@ -301,6 +345,8 @@ def _patch_openclaw_config(
     provider_name: str,
     original_base_url: str,
     proxy_url: str,
+    model_id: str | None = None,
+    model_name: str | None = None,
 ) -> dict[str, Any]:
     """Patch an OpenClaw config dict to route through SentineLLM.
 
@@ -310,6 +356,14 @@ def _patch_openclaw_config(
     custom/proxy providers — overriding the ``baseUrl`` of a built-in
     provider (e.g., ``google``) has no effect because OpenClaw uses the
     hardcoded endpoint for built-in providers.
+
+    Args:
+      config_data: Existing OpenClaw config dict to patch.
+      provider_name: Provider ID (e.g., "gemini", "openai").
+      original_base_url: Original provider base URL.
+      proxy_url: SentineLLM proxy URL.
+      model_id: Override the default model ID (e.g., "gemini-2.5-flash").
+      model_name: Override the default display name for the model.
 
     Config written:
       models.mode = "merge"
@@ -332,6 +386,16 @@ def _patch_openclaw_config(
             "api_key_env": None,
         },
     )
+
+    # Allow overriding model ID and name
+    if model_id:
+        model_info = dict(model_info)  # shallow copy to avoid mutating global
+        model_info["id"] = model_id
+        if model_name:
+            model_info["name"] = model_name
+        else:
+            model_info["name"] = f"{model_id} (via SentineLLM)"
+
     model_ref = f"{custom_provider}/{model_info['id']}"
 
     # ── models section (mode + providers) ──────────────────────────────
@@ -561,16 +625,26 @@ def configure_agent_interactive(
             shutil.copy2(config_path, backup_path)
             print(f"  📋 {t('agent_backup')} {backup_path}")
 
+        # Select model for each provider
+        # pid → (model_id, model_name)
+        provider_models: dict[str, tuple[str, str]] = {}
+        for provider_id in selected_providers:
+            chosen_model_id, chosen_model_name = _select_model_for_provider(provider_id)
+            provider_models[provider_id] = (chosen_model_id, chosen_model_name)
+
         # Patch all selected providers
         for provider_id in selected_providers:
             preset = PROVIDER_PRESETS[provider_id]
+            mid, mname = provider_models[provider_id]
             config_data = _patch_openclaw_config(
                 config_data,
                 provider_id,
                 preset["base_url"],
                 proxy_url,
+                model_id=mid,
+                model_name=mname,
             )
-            print(f"  🔌 {preset['name']} → {proxy_url}")
+            print(f"  🔌 {preset['name']} ({mid}) → {proxy_url}")
 
         _write_json_file(config_path, config_data)
         print(f"\n  ✅ {t('agent_config_saved')} {config_path}")
@@ -616,6 +690,54 @@ def configure_agent_interactive(
         "proxy_url": proxy_url,
         "config_path": str(config_path) if config_path else None,
     }
+
+
+def _select_model_for_provider(provider_id: str) -> tuple[str, str]:
+    """Interactive model selection for a provider.
+
+    Shows available models and allows custom input.
+    Returns (model_id, model_display_name).
+    """
+    default_info = PROVIDER_DEFAULT_MODELS.get(provider_id, {})
+    default_model_id = default_info.get("id", "default-model")
+    available = PROVIDER_MODELS.get(provider_id, [])
+
+    if questionary is None or not available:
+        # Non-interactive fallback
+        return default_model_id, f"{default_model_id} (via SentineLLM)"
+
+    preset_name = PROVIDER_PRESETS.get(provider_id, {}).get("name", provider_id)
+    model_choices = []
+    for m in available:
+        is_default = m["id"] == default_model_id
+        label = f"{'⭐ ' if is_default else ''}{m['name']} ({m['id']})"
+        model_choices.append(questionary.Choice(label, value=m["id"]))
+    model_choices.append(
+        questionary.Choice("✏️  Otro (escribir ID manualmente)", value="__custom__")
+    )
+
+    selected = questionary.select(
+        f"  Modelo para {preset_name}:",
+        choices=model_choices,
+        style=CUSTOM_STYLE,
+    ).ask()
+
+    if selected == "__custom__":
+        custom_id = questionary.text(
+            f"  ID del modelo {preset_name} (ej: {default_model_id}):",
+            default=default_model_id,
+            style=CUSTOM_STYLE,
+        ).ask()
+        if custom_id:
+            return custom_id, f"{custom_id} (via SentineLLM)"
+        return default_model_id, f"{default_model_id} (via SentineLLM)"
+
+    if selected is None:
+        return default_model_id, f"{default_model_id} (via SentineLLM)"
+
+    # Find display name from catalog
+    display = next((m["name"] for m in available if m["id"] == selected), selected)
+    return selected, f"{display} (via SentineLLM)"
 
 
 def _select_single_provider() -> str | None:
@@ -771,6 +893,7 @@ def quick_configure_openclaw(
     provider: str | list[str] = "openai",
     proxy_host: str = "127.0.0.1",
     proxy_port: int = 8080,
+    model_id: str | None = None,
 ) -> bool:
     """Non-interactive: auto-patch OpenClaw config for SentineLLM.
 
@@ -779,10 +902,13 @@ def quick_configure_openclaw(
                   E.g. "openai" or ["openai", "anthropic", "gemini"]
         proxy_host: SentineLLM proxy host
         proxy_port: SentineLLM proxy port
+        model_id: Override the default model ID (applies to all providers).
+                  E.g. "gemini-2.5-flash"
 
     Usage:
         from src.cli.agent_config import quick_configure_openclaw
         quick_configure_openclaw("anthropic")
+        quick_configure_openclaw("gemini", model_id="gemini-2.5-flash")
         quick_configure_openclaw(["openai", "anthropic", "gemini"])
 
     Returns True if successful, False otherwise.
@@ -819,8 +945,10 @@ def quick_configure_openclaw(
             prov,
             preset["base_url"],
             proxy_url,
+            model_id=model_id,
         )
-        print(f"  ✅ {prov} → {proxy_url} → {preset['base_url']}")
+        model_label = model_id or PROVIDER_DEFAULT_MODELS.get(prov, {}).get("id", "?")
+        print(f"  ✅ {prov} ({model_label}) → {proxy_url} → {preset['base_url']}")
 
     _write_json_file(config_path, config_data)
 

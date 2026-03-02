@@ -268,6 +268,7 @@ def create_proxy_app(
     async def _validate_and_forward(request: Request) -> Response:
         """Core proxy logic: validate input → forward → validate output → return."""
         request_path = request.url.path
+        query_params = str(request.url.query)
         timestamp = datetime.now(timezone.utc).isoformat()
 
         try:
@@ -346,12 +347,14 @@ def create_proxy_app(
                         logger.debug(f"Rewrote Google Gemini path to: {request_path}")
 
             # Detect streaming requests (SSE / Server-Sent Events)
-            query_string = str(request.url.query)
             is_streaming = (
-                "alt=sse" in query_string
-                or "stream=true" in query_string
+                "alt=sse" in query_params
+                or "stream=true" in query_params
                 or request.headers.get("accept") == "text/event-stream"
             )
+
+            # Build full path with query parameters preserved
+            full_path = f"{request_path}?{query_params}" if query_params else request_path
 
             async with httpx.AsyncClient() as client:
                 # Prepare headers (remove proxy-specific headers)
@@ -372,7 +375,7 @@ def create_proxy_app(
                     # Create streaming request
                     req = client.build_request(
                         method=request.method,
-                        url=f"{forward_url}{request_path}",
+                        url=f"{forward_url}{full_path}",
                         content=raw_body,
                         headers=forward_headers,
                         timeout=120.0,
@@ -407,7 +410,7 @@ def create_proxy_app(
                 # === NON-STREAMING: Regular request with output validation ===
                 response = await client.request(
                     method=request.method,
-                    url=f"{forward_url}{request_path}",
+                    url=f"{forward_url}{full_path}",
                     content=raw_body,
                     headers=forward_headers,
                     timeout=120.0,
@@ -531,6 +534,8 @@ def create_proxy_app(
             return await _validate_and_forward(request)
         # For GET requests (e.g., /v1/models), forward without validation
         forward_url = request.headers.get("X-Target-URL", target_url)
+        query_params = str(request.url.query)
+        forward_path = f"/v1/{path}?{query_params}" if query_params else f"/v1/{path}"
         async with httpx.AsyncClient() as client:
             forward_headers = dict(request.headers)
             forward_headers.pop("host", None)
@@ -538,7 +543,7 @@ def create_proxy_app(
             forward_headers.pop("content-length", None)
             response = await client.request(
                 method=request.method,
-                url=f"{forward_url}/v1/{path}",
+                url=f"{forward_url}{forward_path}",
                 headers=forward_headers,
                 timeout=30.0,
             )
@@ -583,6 +588,8 @@ def create_proxy_app(
             return await _validate_and_forward(request)
         # For GET/other methods, forward without validation
         forward_url = request.headers.get("X-Target-URL", target_url)
+        query_params = str(request.url.query)
+        forward_path = f"/{path}?{query_params}" if query_params else f"/{path}"
         async with httpx.AsyncClient() as client:
             forward_headers = dict(request.headers)
             forward_headers.pop("host", None)
@@ -590,7 +597,7 @@ def create_proxy_app(
             forward_headers.pop("content-length", None)
             response = await client.request(
                 method=request.method,
-                url=f"{forward_url}/{path}",
+                url=f"{forward_url}{forward_path}",
                 headers=forward_headers,
                 timeout=30.0,
             )
