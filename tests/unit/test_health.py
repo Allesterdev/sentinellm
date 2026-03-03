@@ -75,7 +75,7 @@ class TestHealthOllamaEnabled:
             assert resp.status_code == 200
             data = resp.json()
             assert data["ollama_available"] is False
-            assert "error" in data["ollama_status"]
+            assert data["ollama_status"] == "unavailable"
 
     def test_config_error(self):
         """Health check handles config ValueError."""

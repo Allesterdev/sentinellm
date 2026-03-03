@@ -15,18 +15,21 @@ def create_app() -> FastAPI:
         title="SentineLLM API",
         description="AI Security Gateway - Protect LLMs from prompt injections and secret leakage",
         version="0.1.0",
-        docs_url="/docs",
-        redoc_url="/redoc",
-        openapi_url="/openapi.json",
+        # Disabled in production (enable only in dev via env)
+        docs_url=None,
+        redoc_url=None,
+        openapi_url=None,
     )
 
     # CORS middleware
+    # Security: allow_credentials=True requires explicit origins (never "*").
+    # Restricting methods and headers reduces the attack surface.
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.CORS_ORIGINS,
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
+        allow_credentials=False,
+        allow_methods=["GET", "POST"],
+        allow_headers=["Content-Type", "X-API-Key"],
     )
 
     # Root endpoint
@@ -36,7 +39,6 @@ def create_app() -> FastAPI:
         return {
             "name": "SentineLLM API",
             "version": "0.1.0",
-            "docs": "/docs",
             "health": "/api/v1/health",
         }
 

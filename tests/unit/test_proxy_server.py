@@ -366,7 +366,7 @@ class TestCreateProxyApp:
         assert app.title == "SentineLLM Proxy"
 
     def test_health_endpoint(self):
-        """Health endpoint returns expected data."""
+        """Health endpoint returns expected data without leaking internal config."""
         app = create_proxy_app(target_url="https://api.openai.com")
         client = TestClient(app)
         response = client.get("/health")
@@ -375,9 +375,10 @@ class TestCreateProxyApp:
         assert data["status"] == "healthy"
         assert data["service"] == "sentinellm-proxy"
         assert data["version"] == "0.3.0"
-        assert data["target_url"] == "https://api.openai.com"
-        assert data["output_validation"] is True
-        assert "openai" in data["supported_providers"]
+        # Security: target_url and output_validation must NOT be exposed
+        assert "target_url" not in data
+        assert "output_validation" not in data
+        assert "supported_providers" not in data
 
     def test_health_via_catch_all(self):
         """Health via universal catch-all path."""
@@ -388,30 +389,96 @@ class TestCreateProxyApp:
         assert response.status_code == 200
 
     def test_default_target_url(self):
-        """Default target URL is OpenAI."""
-        app = create_proxy_app()
-        client = TestClient(app)
-        response = client.get("/health")
-        data = response.json()
-        assert data["target_url"] == "https://api.openai.com"
+        """Default target URL is OpenAI (verified via actual forwarding, not health)."""
+        app = create_proxy_app()  # no explicit target_url
+        client = TestClient(app, raise_server_exceptions=False)
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.content = json.dumps({"choices": [{"message": {"content": "Hi"}}]}).encode()
+        mock_response.headers = {"content-type": "application/json"}
+
+        with patch("httpx.AsyncClient") as mock_client_cls:
+            mock_client = AsyncMock()
+            mock_client.request = AsyncMock(return_value=mock_response)
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock(return_value=False)
+            mock_client_cls.return_value = mock_client
+
+            response = client.post(
+                "/v1/chat/completions",
+                json={"model": "gpt-4", "messages": [{"role": "user", "content": "Hi"}]},
+            )
+            assert response.status_code == 200
+            call_url = mock_client.request.call_args.kwargs.get("url", "")
+            assert "api.openai.com" in call_url
 
     def test_env_target_url(self):
-        """Target URL from environment variable."""
+        """Target URL from environment variable is respected (verified via forwarding)."""
         with patch.dict("os.environ", {"SENTINELLM_TARGET_URL": "https://custom.api.com"}):
             app = create_proxy_app()
-            client = TestClient(app)
-            response = client.get("/health")
-            data = response.json()
-            assert data["target_url"] == "https://custom.api.com"
+            client = TestClient(app, raise_server_exceptions=False)
+
+            mock_response = MagicMock()
+            mock_response.status_code = 200
+            mock_response.content = json.dumps(
+                {"choices": [{"message": {"content": "Hi"}}]}
+            ).encode()
+            mock_response.headers = {"content-type": "application/json"}
+
+            with patch("httpx.AsyncClient") as mock_client_cls:
+                mock_client = AsyncMock()
+                mock_client.request = AsyncMock(return_value=mock_response)
+                mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+                mock_client.__aexit__ = AsyncMock(return_value=False)
+                mock_client_cls.return_value = mock_client
+
+                response = client.post(
+                    "/v1/chat/completions",
+                    json={"model": "gpt-4", "messages": [{"role": "user", "content": "Hi"}]},
+                )
+                assert response.status_code == 200
+                call_url = mock_client.request.call_args.kwargs.get("url", "")
+                assert "custom.api.com" in call_url
 
     def test_env_disable_output_validation(self):
-        """Output validation disabled via environment variable."""
+        """Output validation disabled via env var: secrets in responses pass through."""
         with patch.dict("os.environ", {"SENTINELLM_VALIDATE_OUTPUT": "false"}):
-            app = create_proxy_app()
-            client = TestClient(app)
-            response = client.get("/health")
-            data = response.json()
-            assert data["output_validation"] is False
+            app = create_proxy_app(target_url="https://api.openai.com", validate_output=True)
+            client = TestClient(app, raise_server_exceptions=False)
+
+            # Response contains an AWS key — would normally be blocked by DLP
+            mock_response = MagicMock()
+            mock_response.status_code = 200
+            mock_response.content = json.dumps(
+                {
+                    "choices": [
+                        {
+                            "message": {
+                                "content": "Key: AKIAIOSFODNN7EXAMPLE"  # pragma: allowlist secret
+                            }
+                        }
+                    ]
+                }
+            ).encode()
+            mock_response.headers = {"content-type": "application/json"}
+
+            with patch("httpx.AsyncClient") as mock_client_cls:
+                mock_client = AsyncMock()
+                mock_client.request = AsyncMock(return_value=mock_response)
+                mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+                mock_client.__aexit__ = AsyncMock(return_value=False)
+                mock_client_cls.return_value = mock_client
+
+                response = client.post(
+                    "/v1/chat/completions",
+                    json={
+                        "model": "gpt-4",
+                        "messages": [{"role": "user", "content": "Show config"}],
+                    },
+                )
+                # With output validation disabled, the secret-containing response passes through
+                assert response.status_code == 200
 
     def test_input_blocked_injection(self):
         """POST with prompt injection is blocked (403)."""
@@ -724,8 +791,12 @@ class TestCreateProxyApp:
             response = client.get("/api/version")
             assert response.status_code == 200
 
-    def test_x_target_url_header(self):
-        """X-Target-URL header overrides target URL."""
+    def test_x_target_url_header_is_ignored(self):
+        """X-Target-URL header is IGNORED for security (SSRF prevention).
+
+        The proxy must always forward to the configured target_url,
+        regardless of what the client sends in X-Target-URL.
+        """
         app = create_proxy_app(target_url="https://api.openai.com")
         client = TestClient(app, raise_server_exceptions=False)
 
@@ -749,12 +820,17 @@ class TestCreateProxyApp:
                     "model": "gpt-4",
                     "messages": [{"role": "user", "content": "Hello"}],
                 },
-                headers={"X-Target-URL": "https://custom-api.com"},
+                headers={"X-Target-URL": "https://attacker.com"},
             )
             assert response.status_code == 200
-            # Verify the request was sent to the custom URL
+            # Verify the request was sent to the CONFIGURED target, NOT the header value
             call_args = mock_client.request.call_args
-            assert "custom-api.com" in call_args.kwargs["url"]
+            forwarded_url = call_args.kwargs.get("url") or call_args[1].get("url", "")
+            assert "attacker.com" not in forwarded_url
+            assert "api.openai.com" in forwarded_url
+            # X-Target-URL must NOT be forwarded to the upstream provider
+            forwarded_headers = call_args.kwargs.get("headers") or call_args[1].get("headers", {})
+            assert "x-target-url" not in {k.lower() for k in forwarded_headers}
 
     def test_empty_messages_forwarded(self):
         """Request with empty messages list is forwarded."""

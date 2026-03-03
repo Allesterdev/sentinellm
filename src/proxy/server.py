@@ -20,6 +20,7 @@ import logging
 import os
 from datetime import datetime, timezone
 from pathlib import Path
+from urllib.parse import parse_qs
 
 import httpx
 from fastapi import FastAPI, HTTPException, Request, Response
@@ -238,10 +239,15 @@ def create_proxy_app(
     # Load environment from ~/.sentinellm.env if exists
     _load_env_file()
 
+    # Disable all API documentation endpoints — the proxy is an internal
+    # security component and should not expose a browsable interface.
     app = FastAPI(
         title="SentineLLM Proxy",
         description="Security proxy for LLM API requests (input & output validation)",
         version="0.3.0",
+        docs_url=None,
+        redoc_url=None,
+        openapi_url=None,
     )
 
     # Determine target URL
@@ -272,8 +278,34 @@ def create_proxy_app(
         timestamp = datetime.now(timezone.utc).isoformat()
 
         try:
+            # === BODY SIZE GUARD (DoS prevention) ===
+            # Reject bodies larger than 10 MB to prevent memory exhaustion.
+            # Large legitimate LLM requests (vision, long contexts) rarely exceed this.
+            _max_body_bytes = 10 * 1024 * 1024  # 10 MB
+            content_length = request.headers.get("content-length")
+            if content_length and int(content_length) > _max_body_bytes:
+                raise HTTPException(
+                    status_code=413,
+                    detail={
+                        "error": {
+                            "message": "Request body too large (max 10 MB)",
+                            "type": "payload_too_large",
+                        }
+                    },
+                )
+
             # Parse request body
             raw_body = await request.body()
+            if len(raw_body) > _max_body_bytes:
+                raise HTTPException(
+                    status_code=413,
+                    detail={
+                        "error": {
+                            "message": "Request body too large (max 10 MB)",
+                            "type": "payload_too_large",
+                        }
+                    },
+                )
             body = {}
             if raw_body:
                 try:
@@ -334,7 +366,15 @@ def create_proxy_app(
                 )
 
             # === FORWARD TO LLM ===
-            forward_url = request.headers.get("X-Target-URL", target_url)
+            # X-Target-URL is disabled for security (SSRF / exfiltration risk).
+            # The proxy always forwards to the configured target_url.
+            if request.headers.get("X-Target-URL"):
+                logger.warning(
+                    "[%s] X-Target-URL header ignored (disabled for security): %s",
+                    timestamp,
+                    request.headers.get("X-Target-URL"),
+                )
+            forward_url = target_url
 
             # Fix Google Gemini API paths: add /v1beta prefix if missing
             # Google Gemini expects /v1beta/models/... but some clients send /models/...
@@ -347,31 +387,42 @@ def create_proxy_app(
                         logger.debug(f"Rewrote Google Gemini path to: {request_path}")
 
             # Detect streaming requests (SSE / Server-Sent Events)
+            # Use proper query param parsing to avoid substring false positives
+            # (e.g. "upstream=true" incorrectly matching "stream=true")
+            parsed_qs = parse_qs(query_params)
             is_streaming = (
-                "alt=sse" in query_params
-                or "stream=true" in query_params
+                parsed_qs.get("alt", [None])[0] == "sse"
+                or parsed_qs.get("stream", [None])[0] == "true"
                 or request.headers.get("accept") == "text/event-stream"
+                # OpenAI/Ollama/Anthropic: "stream": true in JSON body
+                or (isinstance(body, dict) and body.get("stream") is True)
             )
 
             # Build full path with query parameters preserved
             full_path = f"{request_path}?{query_params}" if query_params else request_path
 
-            async with httpx.AsyncClient() as client:
-                # Prepare headers (remove proxy-specific headers)
-                forward_headers = dict(request.headers)
-                forward_headers.pop("host", None)
-                forward_headers.pop("x-target-url", None)
-                # Remove content-length as httpx recalculates it
-                forward_headers.pop("content-length", None)
+            # Prepare headers (remove proxy-specific headers)
+            forward_headers = dict(request.headers)
+            forward_headers.pop("host", None)
+            forward_headers.pop("x-target-url", None)
+            # Remove content-length as httpx recalculates it
+            forward_headers.pop("content-length", None)
 
-                # === STREAMING: Pass-through without output validation ===
-                if is_streaming:
-                    logger.info(
-                        "[%s] STREAMING request on %s (output validation skipped)",
-                        timestamp,
-                        request_path,
-                    )
+            # === STREAMING: Pass-through without output validation ===
+            if is_streaming:
+                logger.info(
+                    "[%s] STREAMING request on %s (output validation skipped)",
+                    timestamp,
+                    request_path,
+                )
 
+                # For streaming, we must NOT use `async with` for the client
+                # because the context manager would close the client before
+                # FastAPI consumes the StreamingResponse generator.
+                # Instead, we close client+response inside the generator's finally.
+                client = httpx.AsyncClient()
+
+                try:
                     # Create streaming request
                     req = client.build_request(
                         method=request.method,
@@ -383,37 +434,50 @@ def create_proxy_app(
 
                     # Send request and get streaming response
                     resp = await client.send(req, stream=True)
+                except Exception:
+                    # If send() fails, close the client to avoid resource leak
+                    # (stream_chunks() generator never runs, so its finally won't fire)
+                    await client.aclose()
+                    raise
 
-                    # Prepare response headers (exclude hop-by-hop headers)
-                    response_headers = {}
-                    hop_by_hop = {"transfer-encoding", "connection", "keep-alive"}
-                    for k, v in resp.headers.items():
-                        if k.lower() not in hop_by_hop:
-                            response_headers[k] = v
+                # Prepare response headers (exclude hop-by-hop headers)
+                response_headers = {}
+                hop_by_hop = {"transfer-encoding", "connection", "keep-alive"}
+                for k, v in resp.headers.items():
+                    if k.lower() not in hop_by_hop:
+                        response_headers[k] = v
 
-                    # Stream chunks directly to client
-                    async def stream_chunks():
-                        try:
-                            async for chunk in resp.aiter_raw():
-                                yield chunk
-                        except (httpx.ReadError, httpx.StreamError):
-                            # Client (e.g. OpenClaw) closed connection before
-                            # upstream finished streaming — this is normal for
-                            # SSE streams where the client gets the final event
-                            # and disconnects.
-                            logger.debug("Upstream stream closed (client likely disconnected)")
-                        finally:
-                            # Ensure response is closed after streaming
-                            await resp.aclose()
+                # Stream chunks directly to client
+                async def stream_chunks():
+                    try:
+                        async for chunk in resp.aiter_raw():
+                            yield chunk
+                    except (
+                        httpx.ReadError,
+                        httpx.StreamError,
+                        httpx.TimeoutException,
+                        httpx.ProtocolError,
+                    ):
+                        # Client (e.g. OpenClaw) closed connection before
+                        # upstream finished streaming — this is normal for
+                        # SSE streams where the client gets the final event
+                        # and disconnects. Also handle timeouts and protocol
+                        # errors that can occur mid-stream.
+                        logger.debug("Upstream stream closed (client likely disconnected)")
+                    finally:
+                        # Ensure response AND client are closed after streaming
+                        await resp.aclose()
+                        await client.aclose()
 
-                    return StreamingResponse(
-                        stream_chunks(),
-                        status_code=resp.status_code,
-                        headers=response_headers,
-                        media_type=resp.headers.get("content-type", "text/event-stream"),
-                    )
+                return StreamingResponse(
+                    stream_chunks(),
+                    status_code=resp.status_code,
+                    headers=response_headers,
+                    media_type=resp.headers.get("content-type", "text/event-stream"),
+                )
 
-                # === NON-STREAMING: Regular request with output validation ===
+            # === NON-STREAMING: Regular request with output validation ===
+            async with httpx.AsyncClient() as client:
                 response = await client.request(
                     method=request.method,
                     url=f"{forward_url}{full_path}",
@@ -507,7 +571,11 @@ def create_proxy_app(
             ) from e
         except Exception as e:
             logger.error("Proxy error: %s", e, exc_info=True)
-            raise HTTPException(status_code=500, detail=str(e)) from e
+            # Do NOT expose internal exception details to the client (information leakage).
+            raise HTTPException(
+                status_code=500,
+                detail={"error": {"message": "Internal proxy error", "type": "internal_error"}},
+            ) from e
 
     # ── Explicit routes (most common LLM API patterns) ──
 
@@ -539,12 +607,14 @@ def create_proxy_app(
         if request.method == "POST":
             return await _validate_and_forward(request)
         # For GET requests (e.g., /v1/models), forward without validation
-        forward_url = request.headers.get("X-Target-URL", target_url)
+        # X-Target-URL is disabled for security (SSRF / exfiltration risk).
+        forward_url = target_url
         query_params = str(request.url.query)
         forward_path = f"/v1/{path}?{query_params}" if query_params else f"/v1/{path}"
         async with httpx.AsyncClient() as client:
             forward_headers = dict(request.headers)
             forward_headers.pop("host", None)
+            # strip even though ignored
             forward_headers.pop("x-target-url", None)
             forward_headers.pop("content-length", None)
             response = await client.request(
@@ -576,29 +646,23 @@ def create_proxy_app(
           - Any other LLM API endpoint
         """
         if path == "health":
+            # Do not expose target_url or internal config — information leakage.
             return {
                 "status": "healthy",
                 "service": "sentinellm-proxy",
                 "version": "0.3.0",
-                "target_url": target_url,
-                "output_validation": _validate_output,
-                "supported_providers": [
-                    "openai",
-                    "anthropic",
-                    "google-gemini",
-                    "ollama",
-                    "any-openai-compatible",
-                ],
             }
         if request.method == "POST":
             return await _validate_and_forward(request)
         # For GET/other methods, forward without validation
-        forward_url = request.headers.get("X-Target-URL", target_url)
+        # X-Target-URL is disabled for security (SSRF / exfiltration risk).
+        forward_url = target_url
         query_params = str(request.url.query)
         forward_path = f"/{path}?{query_params}" if query_params else f"/{path}"
         async with httpx.AsyncClient() as client:
             forward_headers = dict(request.headers)
             forward_headers.pop("host", None)
+            # strip even though ignored
             forward_headers.pop("x-target-url", None)
             forward_headers.pop("content-length", None)
             response = await client.request(
@@ -621,19 +685,11 @@ def create_proxy_app(
     @app.get("/health")
     async def health():
         """Health check endpoint."""
+        # Do not expose target_url or internal config — information leakage.
         return {
             "status": "healthy",
             "service": "sentinellm-proxy",
             "version": "0.3.0",
-            "target_url": target_url,
-            "output_validation": _validate_output,
-            "supported_providers": [
-                "openai",
-                "anthropic",
-                "google-gemini",
-                "ollama",
-                "any-openai-compatible",
-            ],
         }
 
     return app

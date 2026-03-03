@@ -4,14 +4,19 @@ Validation endpoints.
 
 import logging
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
 
 from src.core.prompt_validator import PromptValidator
 
+from ..auth import require_api_key
 from ..models import ErrorResponse, LayerResult, ValidationRequest, ValidationResponse
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
+
+# Maximum text length accepted per validation request (protects against DoS)
+_MAX_TEXT_BYTES = 50_000  # 50 KB
 
 
 def _get_validator() -> PromptValidator:
@@ -19,18 +24,21 @@ def _get_validator() -> PromptValidator:
     try:
         return PromptValidator()
     except (ValueError, ImportError) as e:
+        logger.error("Failed to initialize validator: %s", e)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to initialize validator: {e}",
+            detail="Validator initialization failed",
         ) from e
 
 
 @router.post(
     "/validate",
     response_model=ValidationResponse,
+    dependencies=[Depends(require_api_key)],
     responses={
         200: {"description": "Validation successful"},
         400: {"model": ErrorResponse, "description": "Invalid request"},
+        401: {"model": ErrorResponse, "description": "API key missing"},
         403: {"model": ErrorResponse, "description": "Content blocked by security filters"},
         500: {"model": ErrorResponse, "description": "Internal server error"},
     },
@@ -58,6 +66,12 @@ async def validate_text(request: ValidationRequest):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Text field is required and cannot be empty",
+        )
+
+    if len(request.text.encode()) > _MAX_TEXT_BYTES:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=f"Text exceeds maximum allowed size of {_MAX_TEXT_BYTES // 1000} KB",
         )
 
     validator = _get_validator()
@@ -162,11 +176,15 @@ async def validate_text(request: ValidationRequest):
         logger.error("Validation error: %s", e)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Validation error: {e}",
+            detail="Validation error",
         ) from e
 
 
-@router.post("/validate/batch", response_model=list[ValidationResponse])
+@router.post(
+    "/validate/batch",
+    response_model=list[ValidationResponse],
+    dependencies=[Depends(require_api_key)],
+)
 async def validate_batch(requests: list[ValidationRequest]):
     """
     Validate multiple texts in batch.
@@ -186,6 +204,15 @@ async def validate_batch(requests: list[ValidationRequest]):
             detail="Batch size exceeds maximum limit of 100",
         )
 
+    oversized = [
+        i for i, r in enumerate(requests) if r.text and len(r.text.encode()) > _MAX_TEXT_BYTES
+    ]
+    if oversized:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=f"Items at positions {oversized[:5]} exceed the {_MAX_TEXT_BYTES // 1000} KB per-item limit",
+        )
+
     validator = _get_validator()
     results = []
 
@@ -201,13 +228,13 @@ async def validate_batch(requests: list[ValidationRequest]):
                 )
             )
         except (ValueError, RuntimeError) as e:
-            logger.warning("Batch validation error for text: %s", e)
+            logger.warning("Batch validation error for item: %s", e)
             results.append(
                 ValidationResponse(
                     safe=False,
                     blocked=True,
                     threat_level="UNKNOWN",
-                    reason=f"Validation error: {e}",
+                    reason="Validation error",
                 )
             )
 

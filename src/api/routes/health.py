@@ -48,7 +48,7 @@ async def health_check():
                     status="healthy",
                     version="0.1.0",
                     ollama_available=False,
-                    ollama_status=f"error: {e}",
+                    ollama_status="unavailable",
                 )
         else:
             return HealthResponse(
@@ -75,6 +75,5 @@ async def root():
         "name": "SentineLLM API",
         "version": "0.1.0",
         "description": "AI Security Gateway",
-        "docs": "/docs",
         "health": "/api/v1/health",
     }

@@ -69,7 +69,7 @@ class PromptValidator:
             if llm_config.get("enabled", False):
                 try:
                     self.llm_detector = OllamaDetector(self.config.ollama)
-                except (ConnectionError, ImportError):
+                except Exception:  # noqa: BLE001, S110 — httpx.ConnectError doesn't inherit from ConnectionError  # nosec B110
                     pass  # LLM detector is optional
 
     def validate(self, text: str) -> ValidationResult:
@@ -128,7 +128,7 @@ class PromptValidator:
                     result.blocked_by = "llm_detection"
                     result.threat_level = llm_result.threat_level.name
                     return result
-            except (ConnectionError, TimeoutError):
+            except Exception:  # noqa: BLE001, S110 — httpx exceptions don't inherit from Python builtins  # nosec B110
                 pass  # LLM layer is optional, continue if it fails
 
         # Additional analysis: Entropy (informational only, doesn't block)
