@@ -15,6 +15,7 @@ Supported endpoints (all intercepted transparently):
   - ANY  /{path}                           (universal catch-all for ANY provider)
 """
 
+import copy
 import json
 import logging
 import os
@@ -27,6 +28,7 @@ from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.responses import StreamingResponse
 
 from ..core.prompt_validator import PromptValidator
+from ..utils.constants import SECRET_PATTERNS
 
 logger = logging.getLogger(__name__)
 
@@ -161,6 +163,130 @@ def _extract_messages_from_body(body: dict) -> list[str]:
     return messages
 
 
+def _redact_secrets_in_text(text: str) -> tuple[str, int]:
+    """Replace detected secrets in *text* with ``[REDACTED]`` placeholders.
+
+    Uses the same regex patterns as the SecretDetector so that discovered
+    secrets are consistently masked before forwarding the request to the
+    upstream LLM provider.
+
+    Args:
+        text: Any plain-text string extracted from an LLM API request.
+
+    Returns:
+        A tuple ``(sanitized_text, count)`` where *count* is the number of
+        distinct secrets that were redacted.
+    """
+    count = 0
+    sanitized = text
+    for secret_type, pattern in SECRET_PATTERNS.items():
+        replaced, n = pattern.subn(f"[REDACTED:{secret_type.name}]", sanitized)
+        count += n
+        sanitized = replaced
+    return sanitized, count
+
+
+def _sanitize_content_block(content) -> tuple[any, int]:
+    """Recursively sanitize a content value (str, list, or dict).
+
+    Returns the sanitized value and the total number of secrets redacted.
+    """
+    total = 0
+    if isinstance(content, str):
+        sanitized, n = _redact_secrets_in_text(content)
+        return sanitized, n
+    elif isinstance(content, list):
+        result = []
+        for item in content:
+            sanitized_item, n = _sanitize_content_block(item)
+            result.append(sanitized_item)
+            total += n
+        return result, total
+    elif isinstance(content, dict):
+        result = {}
+        for key, value in content.items():
+            if key in ("text", "content", "prompt", "input", "system", "instructions"):
+                sanitized_value, n = _sanitize_content_block(value)
+                result[key] = sanitized_value
+                total += n
+            else:
+                result[key] = value
+        return result, total
+    return content, 0
+
+
+def _sanitize_body_secrets(body: dict) -> tuple[dict, int]:
+    """Sanitize all text content inside an LLM API request body.
+
+    Walks the entire request body structure and replaces detected secrets
+    with ``[REDACTED:<TYPE>]`` placeholders.  The original body is **not**
+    mutated — a new dict is returned together with the total count of
+    redacted secrets.
+
+    Supports the same fields as :func:`_extract_messages_from_body`:
+    ``messages``, ``prompt``, ``input``, ``system``, ``instructions``,
+    ``contents`` (Gemini), ``systemInstruction`` (Gemini), and ``text``.
+
+    Args:
+        body: Parsed JSON request body.
+
+    Returns:
+        ``(sanitized_body, total_redacted)``
+    """
+    sanitized = copy.deepcopy(body)
+    total = 0
+
+    # OpenAI Chat / Anthropic: messages[].content
+    if "messages" in sanitized and isinstance(sanitized["messages"], list):
+        for msg in sanitized["messages"]:
+            if isinstance(msg, dict) and "content" in msg:
+                msg["content"], n = _sanitize_content_block(msg["content"])
+                total += n
+
+    # OpenAI Completions: prompt
+    if "prompt" in sanitized:
+        sanitized["prompt"], n = _sanitize_content_block(sanitized["prompt"])
+        total += n
+
+    # OpenAI Responses / input
+    if "input" in sanitized:
+        sanitized["input"], n = _sanitize_content_block(sanitized["input"])
+        total += n
+
+    # Anthropic system
+    if "system" in sanitized:
+        sanitized["system"], n = _sanitize_content_block(sanitized["system"])
+        total += n
+
+    # Responses API instructions
+    if "instructions" in sanitized and isinstance(sanitized["instructions"], str):
+        sanitized["instructions"], n = _redact_secrets_in_text(sanitized["instructions"])
+        total += n
+
+    # Google Gemini: contents[].parts[].text
+    if "contents" in sanitized and isinstance(sanitized["contents"], list):
+        for content_item in sanitized["contents"]:
+            if isinstance(content_item, dict):
+                for part in content_item.get("parts", []):
+                    if isinstance(part, dict) and "text" in part:
+                        part["text"], n = _redact_secrets_in_text(part["text"])
+                        total += n
+
+    # Google Gemini: systemInstruction.parts[].text
+    if "systemInstruction" in sanitized and isinstance(sanitized["systemInstruction"], dict):
+        for part in sanitized["systemInstruction"].get("parts", []):
+            if isinstance(part, dict) and "text" in part:
+                part["text"], n = _redact_secrets_in_text(part["text"])
+                total += n
+
+    # Fallback top-level "text"
+    if "text" in sanitized and isinstance(sanitized["text"], str):
+        sanitized["text"], n = _redact_secrets_in_text(sanitized["text"])
+        total += n
+
+    return sanitized, total
+
+
 def _extract_text_from_response(response_body: bytes) -> list[str]:
     """Extract text content from LLM response body for output validation (DLP).
 
@@ -266,9 +392,22 @@ def create_proxy_app(
     _block_levels = {"LOW": 1, "MEDIUM": 2, "HIGH": 3, "CRITICAL": 4}
     _min_block_score = _block_levels.get(_min_block_level, 2)
 
+    # When SENTINELLM_REDACT_SECRETS=true the proxy replaces detected secrets
+    # with [REDACTED:<TYPE>] placeholders instead of blocking the request.
+    # This prevents conversation history from permanently poisoning every
+    # subsequent turn (e.g. after an agent sends a key once, future turns that
+    # replay the history are sanitised and forwarded transparently).
+    # Prompt-injection findings are NOT affected — those still trigger a block.
+    _redact_secrets = os.environ.get("SENTINELLM_REDACT_SECRETS", "").lower() in (
+        "1",
+        "true",
+        "yes",
+    )
+
     logger.info("Proxy will forward requests to: %s", target_url)
     logger.info("Output (DLP) validation: %s", "enabled" if _validate_output else "disabled")
     logger.info("Minimum block level: %s", _min_block_level)
+    logger.info("Redact-secrets mode: %s", "enabled" if _redact_secrets else "disabled")
     validator = PromptValidator()
 
     async def _validate_and_forward(request: Request) -> Response:
@@ -317,6 +456,7 @@ def create_proxy_app(
             # === INPUT VALIDATION ===
             if isinstance(body, dict):
                 messages_to_validate = _extract_messages_from_body(body)
+                _needs_sanitize = False  # set to True when redact mode triggers
 
                 for content in messages_to_validate:
                     if not content or not content.strip():
@@ -327,26 +467,39 @@ def create_proxy_app(
                     if not result.safe:
                         threat_score = _block_levels.get(result.threat_level.upper(), 0)
                         if threat_score >= _min_block_score:
-                            logger.warning(
-                                "[%s] INPUT BLOCKED on %s: filter=%s threat=%s content_preview=%.80s",
-                                timestamp,
-                                request_path,
-                                result.blocked_by,
-                                result.threat_level,
-                                content,
-                            )
-                            raise HTTPException(
-                                status_code=403,
-                                detail={
-                                    "error": {
-                                        "message": f"Request blocked by security filter: {result.blocked_by}",
-                                        "type": "security_violation",
-                                        "threat_level": result.threat_level,
-                                        "blocked_by": result.blocked_by,
-                                        "direction": "input",
-                                    }
-                                },
-                            )
+                            # --- Redact-secrets mode: sanitise & forward ---
+                            if _redact_secrets and result.blocked_by == "secret_detection":
+                                _needs_sanitize = True
+                                logger.warning(
+                                    "[%s] INPUT REDACTED on %s: filter=%s threat=%s content_preview=%.80s",
+                                    timestamp,
+                                    request_path,
+                                    result.blocked_by,
+                                    result.threat_level,
+                                    content,
+                                )
+                            else:
+                                # --- Default: block the request ---
+                                logger.warning(
+                                    "[%s] INPUT BLOCKED on %s: filter=%s threat=%s content_preview=%.80s",
+                                    timestamp,
+                                    request_path,
+                                    result.blocked_by,
+                                    result.threat_level,
+                                    content,
+                                )
+                                raise HTTPException(
+                                    status_code=403,
+                                    detail={
+                                        "error": {
+                                            "message": f"Request blocked by security filter: {result.blocked_by}",
+                                            "type": "security_violation",
+                                            "threat_level": result.threat_level,
+                                            "blocked_by": result.blocked_by,
+                                            "direction": "input",
+                                        }
+                                    },
+                                )
                         else:
                             logger.info(
                                 "[%s] INPUT WARNING on %s: filter=%s threat=%s (below min_block_level=%s) content_preview=%.80s",
@@ -357,6 +510,18 @@ def create_proxy_app(
                                 _min_block_level,
                                 content,
                             )
+
+                # Apply full-body redaction once (avoids multiple passes)
+                if _needs_sanitize:
+                    sanitized_body, n_redacted = _sanitize_body_secrets(body)
+                    raw_body = json.dumps(sanitized_body, ensure_ascii=False).encode("utf-8")
+                    body = sanitized_body
+                    logger.info(
+                        "[%s] INPUT SANITIZED on %s: %d secret(s) redacted, forwarding cleaned request",
+                        timestamp,
+                        request_path,
+                        n_redacted,
+                    )
 
                 logger.info(
                     "[%s] INPUT OK on %s (%d messages validated)",

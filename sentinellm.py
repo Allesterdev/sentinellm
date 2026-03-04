@@ -81,8 +81,8 @@ def select_language():
 
 def _start_proxy(host: str = "127.0.0.1", port: int = 8080, target_url: str | None = None):
     """Start the SentineLLM proxy server."""
-    print("\n🔒 Starting SentineLLM Proxy Server...")
-    print(f"   Listening on: http://{host}:{port}")
+    print(t("starting_proxy"))
+    print(t("proxy_listening").format(host, port))
     if target_url:
         # Show friendly provider name if possible
         provider_name = None
@@ -91,13 +91,13 @@ def _start_proxy(host: str = "127.0.0.1", port: int = 8080, target_url: str | No
                 provider_name = name.capitalize()
                 break
         if provider_name:
-            print(f"   Target: {provider_name} ({target_url})")
+            print(t("proxy_target").format(provider_name, target_url))
         else:
-            print(f"   Target: {target_url}")
+            print(t("proxy_target_url").format(target_url))
     else:
-        print("   Target: Dynamic (via X-Target-URL header)")
-    print(f"\n   Configure your app to use: http://{host}:{port}")
-    print("   Press Ctrl+C to stop\n")
+        print(t("proxy_target_dynamic"))
+    print(t("proxy_configure_app").format(host, port))
+    print(t("press_ctrl_c"))
 
     from src.proxy.server import run_proxy
 
@@ -229,10 +229,10 @@ def main():
                 _start_proxy(host=host, port=port, target_url=target_url)
 
         elif command == "api":
-            print("\n🔌 Starting SentineLLM API Server...")
-            print("   Listening on: http://127.0.0.1:8000 (localhost only)")
+            print(t("starting_api"))
+            print(t("api_url"))
             print("   Docs: http://localhost:8000/docs")
-            print("   Press Ctrl+C to stop\n")
+            print(t("press_ctrl_c"))
             import uvicorn
 
             from src.api.app import app
@@ -248,38 +248,41 @@ def main():
         choice = questionary.select(
             t("main_menu"),
             choices=[
-                "🚀 Start Proxy Server (recommended)",
-                "🤖 Configure AI Agent (OpenClaw, etc.)",
-                "🔌 Start API Server",
-                t("setup_option"),
-                t("config_option"),
-                t("check_ollama_option"),
-                t("install_ollama_option"),
-                t("demo_option"),
-                t("exit_option"),
+                questionary.Separator(" ── Configuración ──────────────────────── "),
+                questionary.Choice(t("setup_option"), value="setup"),
+                questionary.Choice(t("install_ollama_option"), value="install_ollama"),
+                questionary.Choice(t("check_ollama_option"), value="check_ollama"),
+                questionary.Choice(t("config_option"), value="config"),
+                questionary.Separator(" ── Uso diario ─────────────────────────── "),
+                questionary.Choice(t("agent_option"), value="agent"),
+                questionary.Choice(t("proxy_option"), value="proxy"),
+                questionary.Choice(t("api_option"), value="api"),
+                questionary.Separator(" ── Otras opciones ─────────────────────── "),
+                questionary.Choice(t("demo_option"), value="demo"),
+                questionary.Choice(t("exit_option"), value="exit"),
             ],
         ).ask()
 
-        if choice == "🚀 Start Proxy Server (recommended)":
+        if choice == "proxy":
             _interactive_proxy()
-        elif choice == "🤖 Configure AI Agent (OpenClaw, etc.)":
+        elif choice == "agent":
             from src.cli.agent_config import configure_agent_interactive
 
             configure_agent_interactive()
-        elif choice == "🔌 Start API Server":
-            print("\n🔌 Starting SentineLLM API Server...")
-            print("   API: http://127.0.0.1:8000 (localhost only)")
-            print("   Press Ctrl+C to stop\n")
+        elif choice == "api":
+            print(t("starting_api"))
+            print(t("api_url"))
+            print(t("press_ctrl_c"))
             import uvicorn
 
             from src.api.app import app
 
             uvicorn.run(app, host="127.0.0.1", port=8000, reload=False)  # nosec B104
-        elif choice == t("setup_option"):
+        elif choice == "setup":
             run_setup()
-        elif choice == t("config_option"):
+        elif choice == "config":
             run_config_wizard()
-        elif choice == t("check_ollama_option"):
+        elif choice == "check_ollama":
             status = check_ollama_installation()
             print(f"\n📊 {t('status_title')}")
             print(f"  {t('installed')} {'✅' if status['installed'] else '❌'}")
@@ -287,9 +290,9 @@ def main():
             if status["models"]:
                 # type: ignore
                 print(f"  {t('models')} {', '.join(status['models'])}")
-        elif choice == t("install_ollama_option"):
+        elif choice == "install_ollama":
             install_ollama_guide()
-        elif choice == t("demo_option"):
+        elif choice == "demo":
             from examples.interactive_demo import main as demo_main
 
             demo_main()

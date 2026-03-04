@@ -271,7 +271,7 @@ def run_config_wizard() -> dict[str, Any]:
                     style=CUSTOM_STYLE,
                 ).ask():
                     env_var_name = questionary.text(
-                        "Environment variable name that holds the API key",
+                        t("api_key_env_var"),
                         default="SENTINELLM_OLLAMA_API_KEY",
                         style=CUSTOM_STYLE,
                     ).ask()
@@ -279,12 +279,7 @@ def run_config_wizard() -> dict[str, Any]:
                     # The key must be set in the environment before running SentineLLM:
                     #   export SENTINELLM_OLLAMA_API_KEY=<your-key>
                     config["ollama"]["external"]["api_key_env"] = env_var_name
-                    print(
-                        f"\n⚠️  Set the API key via environment variable before "
-                        f"starting SentineLLM:\n"
-                        f"   export {env_var_name}=<your-api-key>\n"
-                        f"   (Never store the raw key value in the config file)\n"
-                    )
+                    print(t("api_key_env_warning").format(env_var_name))
 
             # Circuit breaker configuration
             print(f"\n{t('circuit_breaker_title')}")

@@ -24,18 +24,16 @@ SentineLLM es un **middleware de seguridad** que intercepta el tráfico entre us
 ### Arquitectura de Defensa en Profundidad
 
 ```
-
-User → InputFilter → OllamaFilter → [LLM] → OutputFilter → DLPFilter → Response
-├─ Regex │ ├─ AWS Keys
-├─ Entropía │ ├─ GitHub Tokens
-└─ Luhn Check │ └─ Credit Cards
-└─ ML Semantic Detection
-
+Usuario → FiltroEntrada → FiltroOllama → [LLM] → FiltroSalida → FiltroDLP → Respuesta
+  ├─ Regex         │                          ├─ Claves AWS
+  ├─ Entropía      │                          ├─ Tokens GitHub
+  └─ Algoritmo Luhn│                          └─ Tarjetas de crédito
+                  └─ Detección semántica ML
 ```
 
 ---
 
-## 🚀 Quick Start
+## 🚀 Inicio Rápido
 
 ### Prerequisitos
 
@@ -92,7 +90,7 @@ El wizard te guía a través de:
 - 🌍 **Selección de idioma** (English/Español)
 - 🔧 **Capas de detección** (Regex, LLM)
 - 🤖 **Configuración de Ollama** (Local, VPC, Externo)
-- ⚙️ **Circuit breaker & fallback** settings
+- ⚙️ **Circuit breaker y estrategias de respaldo**
 - 🔐 **Patrones de detección de secretos**
 
 ### 🎮 Demo Interactivo
@@ -100,7 +98,7 @@ El wizard te guía a través de:
 Prueba los filtros de seguridad con escenarios predefinidos:
 
 ```bash
-python examples/interactive_demo.py
+sllm demo
 ```
 
 El demo simula:
@@ -129,12 +127,12 @@ SentineLLM proporciona una API REST para integración con aplicaciones externas:
 ### Iniciar el Servidor API
 
 ```bash
-# Usando el CLI (default seguro — solo localhost)
-python sentinellm.py api
+# Usando el CLI (por defecto seguro — solo localhost)
+sllm api
 
 # O para acceso desde red (Docker/clientes remotos)
 # ⚠️  ADVERTENCIA: Usar solo si entiendes las implicaciones de seguridad
-API_HOST=0.0.0.0 API_PORT=8080 python sentinellm.py api
+API_HOST=0.0.0.0 API_PORT=8080 sllm api
 ```
 
 La API estará disponible en:
@@ -248,6 +246,21 @@ sllm proxy                 # Selección interactiva de proveedor
 ```
 
 Configura tu aplicación para usar `http://localhost:8080` — funciona con OpenClaw, LangChain, o cualquier cliente LLM.
+
+#### 🛡️ Modo redacción de secretos
+
+Cuando el historial de conversación incluye secretos (p. ej., el agente envió una clave API una vez), el proxy puede remplazar automáticamente esos secretos con `[REDACTED:<TIPO>]` en lugar de bloquear todas las peticiones siguientes:
+
+```bash
+# Activar modo redacción (en ~/.sentinellm.env o como variable de entorno)
+SENTINELLM_REDACT_SECRETS=true sllm proxy gemini
+```
+
+| Variable                     | Valores                                | Por defecto | Descripción                                |
+| ---------------------------- | -------------------------------------- | ----------- | ------------------------------------------ |
+| `SENTINELLM_REDACT_SECRETS`  | `true` / `false`                       | `false`     | Redacta secretos en lugar de bloquear      |
+| `SENTINELLM_MIN_BLOCK_LEVEL` | `LOW` / `MEDIUM` / `HIGH` / `CRITICAL` | `MEDIUM`    | Nivel mínimo para bloquear                 |
+| `SENTINELLM_VALIDATE_OUTPUT` | `true` / `false`                       | `true`      | Validar también la respuesta del LLM (DLP) |
 
 Para auto-configurar un agente IA (OpenClaw, etc.):
 
@@ -379,6 +392,7 @@ Consulta la [Guía de CI/CD de Seguridad](docs/security-cicd.md) para documentac
 - [x] **Proxy LLM multi-proveedor (OpenAI, Anthropic, Gemini, Ollama, etc.)**
 - [x] **Auto-configuración para agentes IA (OpenClaw, etc.)**
 - [x] **Atajo CLI `sllm` con alias de proveedores**
+- [x] **Redacción automática de secretos en historial de conversación** (`SENTINELLM_REDACT_SECRETS`)
 - [ ] Middleware de logging
 - [ ] Dashboard Grafana
 - [ ] Deployment en AWS
