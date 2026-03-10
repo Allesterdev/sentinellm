@@ -247,21 +247,22 @@ sllm proxy                 # Selección interactiva de proveedor
 
 Configura tu aplicación para usar `http://localhost:8080` — funciona con OpenClaw, LangChain, o cualquier cliente LLM.
 
-#### 🛡️ Modo redacción de secretos
+#### 🛡️ Protección automática de secretos
 
-Cuando el historial de conversación incluye secretos (p. ej., el agente envió una clave API una vez), el proxy puede remplazar automáticamente esos secretos con `[REDACTED:<TIPO>]` en lugar de bloquear todas las peticiones siguientes:
+El proxy redacta **siempre** cualquier secreto detectado en los mensajes, sustituyéndolo por un placeholder descriptivo antes de reenviar la petición al LLM. Nunca bloquea la conversación por secretos.
 
-```bash
-# Activar modo redacción (en ~/.sentinellm.env o como variable de entorno)
-SENTINELLM_REDACT_SECRETS=true sllm proxy gemini
+```
+Usuario: "Mi clave es AIzaSyB-abc123"
+                   ↓  SentineLLM intercepta
+LLM recibe: "Mi clave es [API_KEY_REMOVED_BY_SECURITY]"
 ```
 
-| Variable                     | Valores                                | Por defecto | Descripción                                |
-| ---------------------------- | -------------------------------------- | ----------- | ------------------------------------------ |
-| `SENTINELLM_REDACT_SECRETS`  | `true` / `false`                       | `false`     | Redacta secretos en lugar de bloquear      |
-| `SENTINELLM_MIN_BLOCK_LEVEL` | `LOW` / `MEDIUM` / `HIGH` / `CRITICAL` | `MEDIUM`    | Nivel mínimo para bloquear                 |
-| `SENTINELLM_VALIDATE_OUTPUT` | `true` / `false`                       | `true`      | Validar también la respuesta del LLM (DLP) |
+Esto garantiza que el secreto **nunca entra en el contexto del LLM** ni en el historial de conversación, eliminando el problema de re-bloqueo en turnos posteriores. El LLM entiende el placeholder y puede responder de forma útil.
 
+| Variable | Valores | Por defecto | Descripción |
+|---|---|---|---|
+| `SENTINELLM_MIN_BLOCK_LEVEL` | `LOW` / `MEDIUM` / `HIGH` / `CRITICAL` | `MEDIUM` | Nivel mínimo para bloquear inyecciones de prompt |
+| `SENTINELLM_VALIDATE_OUTPUT` | `true` / `false` | `true` | Validar también la respuesta del LLM (DLP) |
 Para auto-configurar un agente IA (OpenClaw, etc.):
 
 ```bash
@@ -392,7 +393,7 @@ Consulta la [Guía de CI/CD de Seguridad](docs/security-cicd.md) para documentac
 - [x] **Proxy LLM multi-proveedor (OpenAI, Anthropic, Gemini, Ollama, etc.)**
 - [x] **Auto-configuración para agentes IA (OpenClaw, etc.)**
 - [x] **Atajo CLI `sllm` con alias de proveedores**
-- [x] **Redacción automática de secretos en historial de conversación** (`SENTINELLM_REDACT_SECRETS`)
+- [x] **Redacción automática de secretos con placeholder descriptivo** (sin configuración, siempre activo)
 - [ ] Middleware de logging
 - [ ] Dashboard Grafana
 - [ ] Deployment en AWS

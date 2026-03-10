@@ -502,25 +502,45 @@ class TestCreateProxyApp:
             assert data["detail"]["error"]["type"] == "security_violation"
             assert data["detail"]["error"]["direction"] == "input"
 
-    def test_input_blocked_secret(self):
-        """POST with secret is blocked (403)."""
+    def test_input_secret_is_redacted_and_forwarded(self):
+        """Secrets in input are REDACTED with a descriptive placeholder and forwarded (never blocked)."""
         app = create_proxy_app(target_url="https://api.openai.com")
         client = TestClient(app, raise_server_exceptions=False)
-        response = client.post(
-            "/v1/chat/completions",
-            json={
-                "model": "gpt-4",
-                "messages": [
-                    {
-                        "role": "user",
-                        "content": "My AWS key is AKIAIOSFODNN7EXAMPLE",  # pragma: allowlist secret
-                    }
-                ],
-            },
-        )
-        assert response.status_code == 403
-        data = response.json()
-        assert data["detail"]["error"]["type"] == "security_violation"
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.content = json.dumps(
+            {"choices": [{"message": {"content": "I see a redacted value in your message."}}]}
+        ).encode()
+        mock_response.headers = {"content-type": "application/json"}
+
+        with patch("httpx.AsyncClient") as mock_client_cls:
+            mock_client = AsyncMock()
+            mock_client.request = AsyncMock(return_value=mock_response)
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock(return_value=False)
+            mock_client_cls.return_value = mock_client
+
+            response = client.post(
+                "/v1/chat/completions",
+                json={
+                    "model": "gpt-4",
+                    "messages": [
+                        {
+                            "role": "user",
+                            "content": "My AWS key is AKIAIOSFODNN7EXAMPLE",  # pragma: allowlist secret
+                        }
+                    ],
+                },
+            )
+            # Secret is redacted and request is forwarded — never blocked
+            assert response.status_code == 200
+
+            # Verify the body forwarded to the LLM no longer contains the raw secret
+            forwarded_body = json.loads(mock_client.request.call_args.kwargs["content"])
+            forwarded_content = forwarded_body["messages"][0]["content"]
+            assert "AKIAIOSFODNN7EXAMPLE" not in forwarded_content  # pragma: allowlist secret
+            assert "REMOVED_BY_SECURITY" in forwarded_content
 
     def test_input_blocked_completions_endpoint(self):
         """Injection blocked on /v1/completions."""

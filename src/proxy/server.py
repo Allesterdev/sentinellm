@@ -28,7 +28,22 @@ from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.responses import StreamingResponse
 
 from ..core.prompt_validator import PromptValidator
-from ..utils.constants import SECRET_PATTERNS
+from ..utils.constants import SECRET_PATTERNS, SecretType
+
+# Descriptive placeholders per secret type — meaningful for both humans and
+# the LLM that will receive the sanitised message.  The text is intentionally
+# verbose so the model understands *why* a value is missing and does not try
+# to hallucinate or reconstruct the original secret.
+_SECRET_PLACEHOLDERS: dict[SecretType, str] = {
+    SecretType.AWS_ACCESS_KEY: "[AWS_ACCESS_KEY_REMOVED_BY_SECURITY]",
+    SecretType.AWS_SECRET_KEY: "[AWS_SECRET_KEY_REMOVED_BY_SECURITY]",
+    SecretType.GITHUB_TOKEN: "[GITHUB_TOKEN_REMOVED_BY_SECURITY]",
+    SecretType.BEARER_TOKEN: "[BEARER_TOKEN_REMOVED_BY_SECURITY]",
+    SecretType.JWT_TOKEN: "[JWT_TOKEN_REMOVED_BY_SECURITY]",
+    SecretType.GENERIC_API_KEY: "[API_KEY_REMOVED_BY_SECURITY]",
+    SecretType.PRIVATE_KEY: "[PRIVATE_KEY_REMOVED_BY_SECURITY]",
+    SecretType.CREDIT_CARD: "[CREDIT_CARD_REMOVED_BY_SECURITY]",
+}
 
 logger = logging.getLogger(__name__)
 
@@ -164,11 +179,17 @@ def _extract_messages_from_body(body: dict) -> list[str]:
 
 
 def _redact_secrets_in_text(text: str) -> tuple[str, int]:
-    """Replace detected secrets in *text* with ``[REDACTED]`` placeholders.
+    """Replace detected secrets in *text* with descriptive placeholders.
 
-    Uses the same regex patterns as the SecretDetector so that discovered
-    secrets are consistently masked before forwarding the request to the
-    upstream LLM provider.
+    Each secret type gets a specific placeholder that is meaningful to both
+    humans reading the logs and the LLM that receives the sanitised message.
+    The placeholder text tells the model that a sensitive value was removed
+    by SentineLLM so it does not try to hallucinate or reconstruct the
+    original secret.
+
+    Example::
+
+        "My key is AIzaSyB-abc123"  →  "My key is [API_KEY_REMOVED_BY_SECURITY]"
 
     Args:
         text: Any plain-text string extracted from an LLM API request.
@@ -180,7 +201,8 @@ def _redact_secrets_in_text(text: str) -> tuple[str, int]:
     count = 0
     sanitized = text
     for secret_type, pattern in SECRET_PATTERNS.items():
-        replaced, n = pattern.subn(f"[REDACTED:{secret_type.name}]", sanitized)
+        placeholder = _SECRET_PLACEHOLDERS.get(secret_type, "[SENSITIVE_DATA_REMOVED_BY_SECURITY]")
+        replaced, n = pattern.subn(placeholder, sanitized)
         count += n
         sanitized = replaced
     return sanitized, count
@@ -385,29 +407,17 @@ def create_proxy_app(
     if os.environ.get("SENTINELLM_VALIDATE_OUTPUT", "").lower() in ("0", "false", "no"):
         _validate_output = False
 
-    # Minimum threat level required to actually block a request.
-    # Requests below this level are logged but forwarded.
+    # Minimum threat level required to block a prompt-injection request.
+    # Applies ONLY to prompt-injection findings — secrets are always redacted.
     # Options: LOW, MEDIUM, HIGH, CRITICAL (default: MEDIUM)
     _min_block_level = os.environ.get("SENTINELLM_MIN_BLOCK_LEVEL", "MEDIUM").upper()
     _block_levels = {"LOW": 1, "MEDIUM": 2, "HIGH": 3, "CRITICAL": 4}
     _min_block_score = _block_levels.get(_min_block_level, 2)
 
-    # When SENTINELLM_REDACT_SECRETS=true the proxy replaces detected secrets
-    # with [REDACTED:<TYPE>] placeholders instead of blocking the request.
-    # This prevents conversation history from permanently poisoning every
-    # subsequent turn (e.g. after an agent sends a key once, future turns that
-    # replay the history are sanitised and forwarded transparently).
-    # Prompt-injection findings are NOT affected — those still trigger a block.
-    _redact_secrets = os.environ.get("SENTINELLM_REDACT_SECRETS", "").lower() in (
-        "1",
-        "true",
-        "yes",
-    )
-
     logger.info("Proxy will forward requests to: %s", target_url)
     logger.info("Output (DLP) validation: %s", "enabled" if _validate_output else "disabled")
-    logger.info("Minimum block level: %s", _min_block_level)
-    logger.info("Redact-secrets mode: %s", "enabled" if _redact_secrets else "disabled")
+    logger.info("Minimum block level (injection): %s", _min_block_level)
+    logger.info("Secret handling: always redact with descriptive placeholder")
     validator = PromptValidator()
 
     async def _validate_and_forward(request: Request) -> Response:
@@ -454,9 +464,13 @@ def create_proxy_app(
                     pass
 
             # === INPUT VALIDATION ===
+            # Secrets   → always redacted with a descriptive placeholder.
+            #             The sanitised request is forwarded so the conversation
+            #             continues and the LLM understands why the value is missing.
+            # Injection → blocked when threat score >= _min_block_score.
             if isinstance(body, dict):
                 messages_to_validate = _extract_messages_from_body(body)
-                _needs_sanitize = False  # set to True when redact mode triggers
+                _contains_secrets = False
 
                 for content in messages_to_validate:
                     if not content or not content.strip():
@@ -466,40 +480,41 @@ def create_proxy_app(
 
                     if not result.safe:
                         threat_score = _block_levels.get(result.threat_level.upper(), 0)
-                        if threat_score >= _min_block_score:
-                            # --- Redact-secrets mode: sanitise & forward ---
-                            if _redact_secrets and result.blocked_by == "secret_detection":
-                                _needs_sanitize = True
-                                logger.warning(
-                                    "[%s] INPUT REDACTED on %s: filter=%s threat=%s content_preview=%.80s",
-                                    timestamp,
-                                    request_path,
-                                    result.blocked_by,
-                                    result.threat_level,
-                                    content,
-                                )
-                            else:
-                                # --- Default: block the request ---
-                                logger.warning(
-                                    "[%s] INPUT BLOCKED on %s: filter=%s threat=%s content_preview=%.80s",
-                                    timestamp,
-                                    request_path,
-                                    result.blocked_by,
-                                    result.threat_level,
-                                    content,
-                                )
-                                raise HTTPException(
-                                    status_code=403,
-                                    detail={
-                                        "error": {
-                                            "message": f"Request blocked by security filter: {result.blocked_by}",
-                                            "type": "security_violation",
-                                            "threat_level": result.threat_level,
-                                            "blocked_by": result.blocked_by,
-                                            "direction": "input",
-                                        }
-                                    },
-                                )
+
+                        if result.blocked_by == "secret_detection":
+                            # --- Secrets: always redact, never block ---
+                            _contains_secrets = True
+                            logger.warning(
+                                "[%s] SECRETO DETECTADO en %s: tipo=%s nivel=%s — redactando y reenviando. preview=%.80s",
+                                timestamp,
+                                request_path,
+                                result.blocked_by,
+                                result.threat_level,
+                                content,
+                            )
+
+                        elif threat_score >= _min_block_score:
+                            # --- Prompt injection: block ---
+                            logger.warning(
+                                "[%s] INPUT BLOCKED on %s: filter=%s threat=%s content_preview=%.80s",
+                                timestamp,
+                                request_path,
+                                result.blocked_by,
+                                result.threat_level,
+                                content,
+                            )
+                            raise HTTPException(
+                                status_code=403,
+                                detail={
+                                    "error": {
+                                        "message": f"Request blocked by security filter: {result.blocked_by}",
+                                        "type": "security_violation",
+                                        "threat_level": result.threat_level,
+                                        "blocked_by": result.blocked_by,
+                                        "direction": "input",
+                                    }
+                                },
+                            )
                         else:
                             logger.info(
                                 "[%s] INPUT WARNING on %s: filter=%s threat=%s (below min_block_level=%s) content_preview=%.80s",
@@ -511,13 +526,13 @@ def create_proxy_app(
                                 content,
                             )
 
-                # Apply full-body redaction once (avoids multiple passes)
-                if _needs_sanitize:
+                # Sanitise the full body in a single pass if any secret was found
+                if _contains_secrets:
                     sanitized_body, n_redacted = _sanitize_body_secrets(body)
                     raw_body = json.dumps(sanitized_body, ensure_ascii=False).encode("utf-8")
                     body = sanitized_body
                     logger.info(
-                        "[%s] INPUT SANITIZED on %s: %d secret(s) redacted, forwarding cleaned request",
+                        "[%s] CUERPO SANEADO en %s: %d secreto(s) sustituido(s) por placeholder descriptivo — petición reenviada al LLM",
                         timestamp,
                         request_path,
                         n_redacted,

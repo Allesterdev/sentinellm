@@ -11,7 +11,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import httpx
 from fastapi.testclient import TestClient
 
-from src.proxy.server import create_proxy_app
+from src.proxy.server import (
+    _sanitize_body_secrets,
+    _sanitize_content_block,
+    create_proxy_app,
+)
 
 # ── Bug 1: stream=true in JSON body not detected as streaming ───────────
 
@@ -498,3 +502,150 @@ class TestStreamingWithValidation:
 
             assert response.status_code == 200
             mock_client.send.assert_called_once()
+
+
+# ── Unit tests for _sanitize_body_secrets coverage ─────────────────────
+
+
+_FAKE_AWS_KEY = "AKIAIOSFODNN7EXAMPLE"  # pragma: allowlist secret
+_FAKE_AWS_SECRET = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"  # pragma: allowlist secret
+
+
+class TestSanitizeBodySecretsFields:
+    """Direct unit tests for _sanitize_body_secrets() covering all
+    supported body-field variants (Anthropic system, instructions, Gemini
+    contents/systemInstruction, and the fallback top-level 'text' field).
+    """
+
+    def test_anthropic_system_field_is_redacted(self):
+        """Anthropic 'system' string field gets secrets redacted."""
+        body = {
+            "model": "claude-3-opus",
+            "system": f"Your AWS key is {_FAKE_AWS_KEY}",
+            "messages": [{"role": "user", "content": "hello"}],
+        }
+        sanitized, count = _sanitize_body_secrets(body)
+        assert _FAKE_AWS_KEY not in sanitized["system"]
+        assert "REMOVED_BY_SECURITY" in sanitized["system"]
+        assert count >= 1
+
+    def test_instructions_field_is_redacted(self):
+        """'instructions' string field (Responses API) gets secrets redacted."""
+        body = {
+            "model": "gpt-4o",
+            "instructions": f"Use this key: {_FAKE_AWS_KEY}",
+            "input": "What time is it?",
+        }
+        sanitized, count = _sanitize_body_secrets(body)
+        assert _FAKE_AWS_KEY not in sanitized["instructions"]
+        assert "REMOVED_BY_SECURITY" in sanitized["instructions"]
+        assert count >= 1
+
+    def test_gemini_contents_parts_text_is_redacted(self):
+        """Gemini-style 'contents[].parts[].text' fields get secrets redacted."""
+        body = {
+            "contents": [
+                {"parts": [{"text": f"My secret: {_FAKE_AWS_KEY}"}]},
+                {"parts": [{"text": "normal message"}, {"text": f"key: {_FAKE_AWS_KEY}"}]},
+            ]
+        }
+        sanitized, count = _sanitize_body_secrets(body)
+        for content_item in sanitized["contents"]:
+            for part in content_item.get("parts", []):
+                assert _FAKE_AWS_KEY not in part.get("text", "")
+        assert count >= 2
+
+    def test_gemini_system_instruction_is_redacted(self):
+        """Gemini 'systemInstruction.parts[].text' field gets secrets redacted."""
+        body = {
+            "systemInstruction": {"parts": [{"text": f"Use this token: {_FAKE_AWS_KEY}"}]},
+            "contents": [{"parts": [{"text": "hello"}]}],
+        }
+        sanitized, count = _sanitize_body_secrets(body)
+        parts = sanitized["systemInstruction"]["parts"]
+        assert _FAKE_AWS_KEY not in parts[0]["text"]
+        assert "REMOVED_BY_SECURITY" in parts[0]["text"]
+        assert count >= 1
+
+    def test_fallback_top_level_text_field_is_redacted(self):
+        """Top-level 'text' field (fallback) gets secrets redacted."""
+        body = {"text": f"Here is my key: {_FAKE_AWS_KEY}"}
+        sanitized, count = _sanitize_body_secrets(body)
+        assert _FAKE_AWS_KEY not in sanitized["text"]
+        assert "REMOVED_BY_SECURITY" in sanitized["text"]
+        assert count >= 1
+
+    def test_non_string_instructions_not_processed(self):
+        """Non-string 'instructions' field is left untouched."""
+        body = {"instructions": {"nested": "value"}, "input": "hello"}
+        sanitized, count = _sanitize_body_secrets(body)
+        assert sanitized["instructions"] == {"nested": "value"}
+        assert count == 0
+
+    def test_clean_body_returns_zero_count(self):
+        """A body with no secrets returns count=0 and is otherwise unchanged."""
+        body = {
+            "system": "You are a helpful assistant.",
+            "instructions": "Be concise.",
+            "contents": [{"parts": [{"text": "What is the capital of France?"}]}],
+            "systemInstruction": {"parts": [{"text": "Respond in English."}]},
+            "text": "Standalone text field",
+        }
+        sanitized, count = _sanitize_body_secrets(body)
+        assert count == 0
+        assert sanitized["system"] == body["system"]
+        assert sanitized["text"] == body["text"]
+
+
+class TestSanitizeContentBlockVariants:
+    """Direct unit tests for _sanitize_content_block() list and dict branches."""
+
+    def test_list_of_strings_with_secret(self):
+        """List of strings — all items are sanitized."""
+        content, count = _sanitize_content_block([f"first part with {_FAKE_AWS_KEY}", "clean part"])
+        assert isinstance(content, list)
+        assert _FAKE_AWS_KEY not in content[0]
+        assert count >= 1
+
+    def test_list_of_dicts_with_text_key(self):
+        """List of {'text': ...} dicts — text values are sanitized."""
+        content, count = _sanitize_content_block(
+            [
+                {"text": f"contains {_FAKE_AWS_KEY}"},
+                {"text": "clean text"},
+            ]
+        )
+        assert isinstance(content, list)
+        assert _FAKE_AWS_KEY not in content[0]["text"]
+        assert count >= 1
+
+    def test_dict_with_text_key_sanitized(self):
+        """Dict with a 'text' key — value is sanitized."""
+        content, count = _sanitize_content_block(
+            {"text": f"secret: {_FAKE_AWS_KEY}", "type": "text"}
+        )
+        assert isinstance(content, dict)
+        assert _FAKE_AWS_KEY not in content["text"]
+        assert content["type"] == "text"  # non-text keys are unchanged
+        assert count >= 1
+
+    def test_dict_with_content_key_sanitized(self):
+        """Dict with a 'content' key — value is sanitized."""
+        content, count = _sanitize_content_block({"content": f"my key is {_FAKE_AWS_KEY}"})
+        assert _FAKE_AWS_KEY not in content["content"]
+        assert count >= 1
+
+    def test_dict_with_unknown_key_not_sanitized(self):
+        """Dict keys not in the sensitive-fields list are left untouched."""
+        content, count = _sanitize_content_block(
+            {"metadata": f"key={_FAKE_AWS_KEY}", "text": "clean"}
+        )
+        # 'metadata' is not in the sanitized-fields list
+        assert _FAKE_AWS_KEY in content["metadata"]
+        assert count == 0
+
+    def test_non_string_non_list_non_dict_returns_unchanged(self):
+        """Non-string, non-list, non-dict values are returned as-is."""
+        content, count = _sanitize_content_block(42)
+        assert content == 42
+        assert count == 0
