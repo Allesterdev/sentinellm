@@ -57,9 +57,9 @@ _SECRET_PLACEHOLDERS: dict[SecretType, str] = {
 
 logger = logging.getLogger(__name__)
 
-# Hashes (SHA-256 truncado) de secretos ya advertidos en esta sesión del proxy.
-# Permite emitir el WARNING solo la primera vez que aparece un secreto concreto
-# y silenciar turnos posteriores donde el mismo valor sigue en el historial.
+# SHA-256 hashes (truncated) of secrets already warned about in this proxy session.
+# Ensures the WARNING is emitted only the first time a specific secret appears,
+# silencing subsequent turns where the same value remains in the history.
 _seen_secret_hashes: set[str] = set()
 
 
@@ -512,7 +512,7 @@ def create_proxy_app(
                             if new_hashes:
                                 for stype_name, secret_len in new_hashes:
                                     logger.warning(
-                                        "[%s] SECRETO DETECTADO en %s: tipo=%s longitud=%d — redactando y reenviando (no se volverá a advertir por este secreto)",
+                                        "[%s] SECRET DETECTED on %s: type=%s length=%d — redacting and forwarding (will not warn again for this secret)",
                                         timestamp,
                                         request_path,
                                         stype_name,
@@ -558,7 +558,7 @@ def create_proxy_app(
                     raw_body = json.dumps(sanitized_body, ensure_ascii=False).encode("utf-8")
                     body = sanitized_body
                     logger.info(
-                        "[%s] CUERPO SANEADO en %s: %d secreto(s) sustituido(s) por placeholder descriptivo — petición reenviada al LLM",
+                        "[%s] BODY SANITISED on %s: %d secret(s) replaced with descriptive placeholder — request forwarded to LLM",
                         timestamp,
                         request_path,
                         n_redacted,
