@@ -16,6 +16,7 @@ Supported endpoints (all intercepted transparently):
 """
 
 import copy
+import hashlib
 import json
 import logging
 import os
@@ -40,12 +41,26 @@ _SECRET_PLACEHOLDERS: dict[SecretType, str] = {
     SecretType.GITHUB_TOKEN: "[GITHUB_TOKEN_REMOVED_BY_SECURITY]",
     SecretType.BEARER_TOKEN: "[BEARER_TOKEN_REMOVED_BY_SECURITY]",
     SecretType.JWT_TOKEN: "[JWT_TOKEN_REMOVED_BY_SECURITY]",
+    SecretType.GOOGLE_API_KEY: "[GOOGLE_API_KEY_REMOVED_BY_SECURITY]",
+    SecretType.OPENAI_API_KEY: "[OPENAI_API_KEY_REMOVED_BY_SECURITY]",
+    SecretType.ANTHROPIC_API_KEY: "[ANTHROPIC_API_KEY_REMOVED_BY_SECURITY]",
+    SecretType.HUGGINGFACE_TOKEN: "[HUGGINGFACE_TOKEN_REMOVED_BY_SECURITY]",
+    SecretType.STRIPE_KEY: "[STRIPE_KEY_REMOVED_BY_SECURITY]",
+    SecretType.SLACK_TOKEN: "[SLACK_TOKEN_REMOVED_BY_SECURITY]",
+    SecretType.SENDGRID_KEY: "[SENDGRID_KEY_REMOVED_BY_SECURITY]",
+    SecretType.GROQ_API_KEY: "[GROQ_API_KEY_REMOVED_BY_SECURITY]",
+    SecretType.OPENROUTER_API_KEY: "[OPENROUTER_API_KEY_REMOVED_BY_SECURITY]",
     SecretType.GENERIC_API_KEY: "[API_KEY_REMOVED_BY_SECURITY]",
     SecretType.PRIVATE_KEY: "[PRIVATE_KEY_REMOVED_BY_SECURITY]",
     SecretType.CREDIT_CARD: "[CREDIT_CARD_REMOVED_BY_SECURITY]",
 }
 
 logger = logging.getLogger(__name__)
+
+# Hashes (SHA-256 truncado) de secretos ya advertidos en esta sesión del proxy.
+# Permite emitir el WARNING solo la primera vez que aparece un secreto concreto
+# y silenciar turnos posteriores donde el mismo valor sigue en el historial.
+_seen_secret_hashes: set[str] = set()
 
 
 def _load_env_file() -> None:
@@ -484,14 +499,25 @@ def create_proxy_app(
                         if result.blocked_by == "secret_detection":
                             # --- Secrets: always redact, never block ---
                             _contains_secrets = True
-                            logger.warning(
-                                "[%s] SECRETO DETECTADO en %s: tipo=%s nivel=%s — redactando y reenviando. preview=%.80s",
-                                timestamp,
-                                request_path,
-                                result.blocked_by,
-                                result.threat_level,
-                                content,
-                            )
+                            # Emit WARNING only once per unique secret value.
+                            # We hash each matched value (never logged) to track
+                            # what has already been reported this session.
+                            new_hashes = []
+                            for stype, pattern in SECRET_PATTERNS.items():
+                                for m in pattern.finditer(content):
+                                    h = hashlib.sha256(m.group(0).encode()).hexdigest()[:16]
+                                    if h not in _seen_secret_hashes:
+                                        _seen_secret_hashes.add(h)
+                                        new_hashes.append((stype.name, len(m.group(0))))
+                            if new_hashes:
+                                for stype_name, secret_len in new_hashes:
+                                    logger.warning(
+                                        "[%s] SECRETO DETECTADO en %s: tipo=%s longitud=%d — redactando y reenviando (no se volverá a advertir por este secreto)",
+                                        timestamp,
+                                        request_path,
+                                        stype_name,
+                                        secret_len,
+                                    )
 
                         elif threat_score >= _min_block_score:
                             # --- Prompt injection: block ---

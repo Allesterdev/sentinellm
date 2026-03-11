@@ -33,6 +33,15 @@ class SecretType(str, Enum):
     GENERIC_API_KEY = "generic_api_key"  # nosec B105 - enum identifier
     PRIVATE_KEY = "private_key"  # nosec B105 - enum identifier
     JWT_TOKEN = "jwt_token"  # nosec B105 - enum identifier
+    GOOGLE_API_KEY = "google_api_key"  # nosec B105  # pragma: allowlist secret
+    OPENAI_API_KEY = "openai_api_key"  # nosec B105  # pragma: allowlist secret
+    ANTHROPIC_API_KEY = "anthropic_api_key"  # nosec B105  # pragma: allowlist secret
+    HUGGINGFACE_TOKEN = "huggingface_token"  # nosec B105  # pragma: allowlist secret
+    STRIPE_KEY = "stripe_key"  # nosec B105  # pragma: allowlist secret
+    SLACK_TOKEN = "slack_token"  # nosec B105  # pragma: allowlist secret
+    SENDGRID_KEY = "sendgrid_key"  # nosec B105  # pragma: allowlist secret
+    GROQ_API_KEY = "groq_api_key"  # nosec B105  # pragma: allowlist secret
+    OPENROUTER_API_KEY = "openrouter_api_key"  # nosec B105  # pragma: allowlist secret
 
 
 # =============================================================================
@@ -59,9 +68,41 @@ JWT_PATTERN: Pattern = re.compile(
     r"eyJ[a-zA-Z0-9_-]{10,}\.eyJ[a-zA-Z0-9_-]{10,}\.[a-zA-Z0-9_-]{10,}", re.IGNORECASE
 )
 
-# Generic API Keys
+# Google API Keys (AIzaSy...)
+GOOGLE_API_KEY_PATTERN: Pattern = re.compile(r"AIza[0-9A-Za-z\-_]{35}")
+
+# OpenAI API Keys (sk-... old and sk-proj-... new format)
+OPENAI_API_KEY_PATTERN: Pattern = re.compile(
+    r"sk-(?:proj-|org-)?[a-zA-Z0-9]{20,}(?:T3BlbkFJ[a-zA-Z0-9]{20})?"
+)
+
+# Anthropic API Keys (sk-ant-...)
+ANTHROPIC_API_KEY_PATTERN: Pattern = re.compile(r"sk-ant-(?:api\d+-)?[a-zA-Z0-9\-_]{90,}")
+
+# HuggingFace tokens (hf_...)
+HUGGINGFACE_TOKEN_PATTERN: Pattern = re.compile(r"hf_[a-zA-Z0-9]{34,}")
+
+# Stripe keys (sk_live_..., sk_test_..., rk_live_...)
+STRIPE_KEY_PATTERN: Pattern = re.compile(r"(?:sk|rk)_(?:live|test)_[0-9a-zA-Z]{24,}")
+
+# Slack tokens (xoxb-, xoxp-, xoxa-, xoxr-, xoxs-, xoxe-)
+SLACK_TOKEN_PATTERN: Pattern = re.compile(
+    r"xox[baprs]-[0-9]{8,13}-[0-9]{8,13}-[a-zA-Z0-9]{24}"
+    r"|xoxe\.xox[bp]-1-[a-zA-Z0-9\-]{10,}"
+)
+
+# SendGrid API keys (SG....)
+SENDGRID_KEY_PATTERN: Pattern = re.compile(r"SG\.[a-zA-Z0-9_\-]{22}\.[a-zA-Z0-9_\-]{43}")
+
+# Groq API keys (gsk_...)
+GROQ_API_KEY_PATTERN: Pattern = re.compile(r"gsk_[a-zA-Z0-9]{52}")
+
+# OpenRouter API keys (sk-or-v1-...)
+OPENROUTER_API_KEY_PATTERN: Pattern = re.compile(r"sk-or-v1-[a-zA-Z0-9]{64}")
+
+# Generic API Keys (context-based: api_key=..., apikey: ...)
 GENERIC_API_KEY_PATTERN: Pattern = re.compile(
-    r"(?i)(?:api[_\-\s]?key|apikey|access[_\-\s]?token)['\"\s:=]+([a-z0-9]{32,})"
+    r"(?i)(?:api[_\-\s]?key|apikey|access[_\-\s]?token)['\"\s:=]+([a-zA-Z0-9\-_.]{32,})"
 )
 
 # Private Keys (PEM)
@@ -89,6 +130,15 @@ SECRET_PATTERNS: dict[SecretType, Pattern] = {
     SecretType.GITHUB_TOKEN: GITHUB_TOKEN_PATTERN,
     SecretType.BEARER_TOKEN: BEARER_TOKEN_PATTERN,
     SecretType.JWT_TOKEN: JWT_PATTERN,
+    SecretType.GOOGLE_API_KEY: GOOGLE_API_KEY_PATTERN,
+    SecretType.OPENAI_API_KEY: OPENAI_API_KEY_PATTERN,
+    SecretType.ANTHROPIC_API_KEY: ANTHROPIC_API_KEY_PATTERN,
+    SecretType.HUGGINGFACE_TOKEN: HUGGINGFACE_TOKEN_PATTERN,
+    SecretType.STRIPE_KEY: STRIPE_KEY_PATTERN,
+    SecretType.SLACK_TOKEN: SLACK_TOKEN_PATTERN,
+    SecretType.SENDGRID_KEY: SENDGRID_KEY_PATTERN,
+    SecretType.GROQ_API_KEY: GROQ_API_KEY_PATTERN,
+    SecretType.OPENROUTER_API_KEY: OPENROUTER_API_KEY_PATTERN,
     SecretType.GENERIC_API_KEY: GENERIC_API_KEY_PATTERN,
     SecretType.PRIVATE_KEY: PRIVATE_KEY_PATTERN,
     SecretType.CREDIT_CARD: CREDIT_CARD_PATTERN,

@@ -649,3 +649,101 @@ class TestSanitizeContentBlockVariants:
         content, count = _sanitize_content_block(42)
         assert content == 42
         assert count == 0
+
+
+# ── Provider-specific pattern redaction ─────────────────────────────────
+
+
+class TestProviderSecretPatterns:
+    """Verify that each provider-specific secret pattern is detected and
+    redacted by _sanitize_body_secrets."""
+
+    def _body(self, text: str) -> dict:
+        return {"messages": [{"role": "user", "content": text}]}
+
+    def test_google_api_key_is_redacted(self):
+        key = "AIzaSyB-ts7QmI5NVBS5MkwOYkjzVg98F4EIbe0"  # pragma: allowlist secret
+        result, count = _sanitize_body_secrets(self._body(f"mi clave es {key}"))
+        content = result["messages"][0]["content"]
+        assert key not in content
+        assert "[GOOGLE_API_KEY_REMOVED_BY_SECURITY]" in content
+        assert count >= 1
+
+    def test_openai_api_key_is_redacted(self):
+        key = "sk-proj-abcdefghijklmnopqrstuvwxyz01234567890ABCDEF"  # pragma: allowlist secret
+        result, count = _sanitize_body_secrets(self._body(f"token: {key}"))
+        content = result["messages"][0]["content"]
+        assert key not in content
+        assert "[OPENAI_API_KEY_REMOVED_BY_SECURITY]" in content
+        assert count >= 1
+
+    def test_anthropic_api_key_is_redacted(self):
+        key = "sk-ant-api03-" + "A" * 90
+        result, count = _sanitize_body_secrets(self._body(f"use {key}"))
+        content = result["messages"][0]["content"]
+        assert key not in content
+        assert "[ANTHROPIC_API_KEY_REMOVED_BY_SECURITY]" in content
+        assert count >= 1
+
+    def test_huggingface_token_is_redacted(self):
+        key = "hf_" + "a" * 34
+        result, count = _sanitize_body_secrets(self._body(f"hf token: {key}"))
+        content = result["messages"][0]["content"]
+        assert key not in content
+        assert "[HUGGINGFACE_TOKEN_REMOVED_BY_SECURITY]" in content
+        assert count >= 1
+
+    def test_stripe_live_key_is_redacted(self):
+        key = "sk_live_abcdefghijklmnopqrstuvwx"  # pragma: allowlist secret
+        result, count = _sanitize_body_secrets(self._body(f"stripe: {key}"))
+        content = result["messages"][0]["content"]
+        assert key not in content
+        assert "[STRIPE_KEY_REMOVED_BY_SECURITY]" in content
+        assert count >= 1
+
+    def test_stripe_test_key_is_redacted(self):
+        key = "sk_test_abcdefghijklmnopqrstuvwx"  # pragma: allowlist secret
+        result, count = _sanitize_body_secrets(self._body(key))
+        content = result["messages"][0]["content"]
+        assert key not in content
+        assert "[STRIPE_KEY_REMOVED_BY_SECURITY]" in content
+        assert count >= 1
+
+    def test_slack_bot_token_is_redacted(self):
+        key = "xoxb-12345678901-12345678901-abcdefghijklmnopqrstuvwx"  # pragma: allowlist secret
+        result, count = _sanitize_body_secrets(self._body(f"slack {key}"))
+        content = result["messages"][0]["content"]
+        assert key not in content
+        assert "[SLACK_TOKEN_REMOVED_BY_SECURITY]" in content
+        assert count >= 1
+
+    def test_sendgrid_key_is_redacted(self):
+        key = "SG." + "a" * 22 + "." + "b" * 43
+        result, count = _sanitize_body_secrets(self._body(f"email key: {key}"))
+        content = result["messages"][0]["content"]
+        assert key not in content
+        assert "[SENDGRID_KEY_REMOVED_BY_SECURITY]" in content
+        assert count >= 1
+
+    def test_groq_api_key_is_redacted(self):
+        key = "gsk_" + "a" * 52
+        result, count = _sanitize_body_secrets(self._body(f"groq: {key}"))
+        content = result["messages"][0]["content"]
+        assert key not in content
+        assert "[GROQ_API_KEY_REMOVED_BY_SECURITY]" in content
+        assert count >= 1
+
+    def test_openrouter_api_key_is_redacted(self):
+        key = "sk-or-v1-" + "a" * 64
+        result, count = _sanitize_body_secrets(self._body(f"router: {key}"))
+        content = result["messages"][0]["content"]
+        assert key not in content
+        assert "[OPENROUTER_API_KEY_REMOVED_BY_SECURITY]" in content
+        assert count >= 1
+
+    def test_clean_text_returns_unchanged(self):
+        """Text without any secrets is not modified."""
+        text = "¿Cuánto es 2+2? El resultado es cuatro."
+        result, count = _sanitize_body_secrets(self._body(text))
+        assert result["messages"][0]["content"] == text
+        assert count == 0
