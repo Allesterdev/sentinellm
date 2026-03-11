@@ -11,6 +11,9 @@
 
 [![Security Pipeline](https://github.com/Allesterdev/sentinellm/actions/workflows/security-pipeline.yml/badge.svg)](https://github.com/Allesterdev/sentinellm/actions/workflows/security-pipeline.yml)
 [![CodeQL](https://github.com/Allesterdev/sentinellm/actions/workflows/codeql.yml/badge.svg)](https://github.com/Allesterdev/sentinellm/actions/workflows/codeql.yml)
+[![Status](https://img.shields.io/badge/Status-MVP%20%2F%20PoC-orange)](https://github.com/Allesterdev/sentinellm)
+
+> ⚠️ **MVP / Proof of Concept** — Core features (proxy, secret redaction, prompt injection detection) are functional and tested. Ollama semantic analysis is experimental and pending full validation. Not recommended for production use without additional testing.
 
 ---
 
@@ -21,16 +24,29 @@ SentineLLM is a **security middleware** that intercepts traffic between users an
 - **Prompt Injections** (input) — Detects attempts to manipulate model behavior
 - **Secret Leakage & DLP** (output) — Prevents leaking credentials, API keys and sensitive data
 
+### 🔐 Automatic Secret Redaction
+
+Every secret detected in a message is **automatically replaced** with a descriptive placeholder before it ever reaches the LLM — no configuration required, always active:
+
+```
+User:     "My key is AIzaSyB-abc123..."
+                ↓  SentineLLM intercepts
+LLM gets: "My key is [GOOGLE_API_KEY_REMOVED_BY_SECURITY]"
+```
+
+This ensures the secret **never enters the LLM context or conversation history**, eliminating the cascading block problem on subsequent turns. Each unique secret triggers exactly one WARNING log entry — no spam.
+
 ### Defense-in-Depth Architecture
 
 ```
-
-User → InputFilter → OllamaFilter → [LLM] → OutputFilter → DLPFilter → Response
-├─ Regex │ ├─ AWS Keys
-├─ Entropy │ ├─ GitHub Tokens
-└─ Luhn Check │ └─ Credit Cards
-└─ ML Semantic Detection
-
+User → SecretRedactor → InputFilter → OllamaFilter → [LLM] → OutputFilter → DLPFilter → Response
+         │               ├─ Regex                              ├─ AWS / GitHub / Credit Cards
+         │               ├─ Entropy                           ├─ Google / OpenAI / Anthropic
+         │               └─ Luhn Check                       ├─ Stripe / Slack / SendGrid
+         │                                                    ├─ Groq / OpenRouter / HuggingFace
+         ├─ Replace with placeholder                         └─ Generic high-entropy keys
+         └─ Log once per unique secret (no spam)
+                                       └─ ML Semantic Detection
 ```
 
 ---
@@ -243,17 +259,46 @@ For complete API reference with all endpoints, models, error codes, and integrat
 sllm proxy openai          # Proxy to OpenAI
 sllm proxy gemini          # Proxy to Google Gemini
 sllm proxy anthropic       # Proxy to Claude
-sllm proxy ollama          # Proxy to local Ollama
+sllm proxy ollama          # Proxy to local Ollama (experimental)
 sllm proxy                 # Interactive provider selection
 ```
 
-Configure your app to use `http://localhost:8080` — works with OpenClaw, LangChain, or any LLM client.
+The wizard will ask you to choose:
 
-To auto-configure an AI agent (OpenClaw, etc.):
+1. **Provider** (OpenAI, Gemini, Anthropic, Ollama…)
+2. **Model** (e.g. `gemini-2.0-flash-lite`, `gpt-4o-mini`)
+3. **API Key** — stored securely in `~/.sentinellm.env`, never committed
 
-```bash
-sllm agent                 # Interactive agent auto-configuration
-```
+From this point, **all agent configuration is managed through SentineLLM**, not directly in the agent.
+
+#### 🤖 OpenClaw Integration (step-by-step)
+
+1. Install and start SentineLLM proxy:
+   ```bash
+   sllm proxy gemini        # or your preferred provider
+   ```
+2. Auto-configure the OpenClaw agent:
+   ```bash
+   sllm agent
+   ```
+3. Restart the OpenClaw gateway so it picks up the new configuration:
+
+   ```bash
+   openclaw gateway restart
+   ```
+
+   > **Note:** `openclaw gateway restart` must be run **after** `sllm agent` completes. The proxy can be started before or after — OpenClaw will route through it on the next gateway restart.
+
+4. All traffic now flows through SentineLLM: `OpenClaw → SentineLLM proxy → LLM`
+
+> ⚠️ **Ollama as LLM provider:** functional but pending full validation in production scenarios. Response times may be slower than cloud providers.
+
+#### ⚙️ Environment Variables
+
+| Variable                     | Values                                 | Default  | Description                                     |
+| ---------------------------- | -------------------------------------- | -------- | ----------------------------------------------- |
+| `SENTINELLM_MIN_BLOCK_LEVEL` | `LOW` / `MEDIUM` / `HIGH` / `CRITICAL` | `MEDIUM` | Minimum threat level to block prompt injections |
+| `SENTINELLM_VALIDATE_OUTPUT` | `true` / `false`                       | `true`   | Also validate LLM responses (DLP)               |
 
 **→ [Complete Proxy Documentation](docs/proxy.md)**
 
@@ -292,15 +337,27 @@ sentinellm/
 
 ### Secret Detection
 
-| Type                   | Method           | Status |
-| ---------------------- | ---------------- | ------ |
-| AWS Access Keys (AKIA) | Regex + Checksum | ✅     |
-| AWS Secret Keys        | Regex + Entropy  | ✅     |
-| GitHub Tokens          | Regex            | ✅     |
-| Bearer Tokens          | Regex            | ✅     |
-| JWT Tokens             | Regex            | ✅     |
-| Credit Cards           | Luhn Algorithm   | ✅     |
-| Private Keys (PEM)     | Regex            | ✅     |
+| Type                       | Method           | Status |
+| -------------------------- | ---------------- | ------ |
+| AWS Access Keys (AKIA)     | Regex + Checksum | ✅     |
+| AWS Secret Keys            | Regex + Entropy  | ✅     |
+| GitHub Tokens              | Regex            | ✅     |
+| Bearer Tokens              | Regex            | ✅     |
+| JWT Tokens                 | Regex            | ✅     |
+| Credit Cards               | Luhn Algorithm   | ✅     |
+| Private Keys (PEM)         | Regex            | ✅     |
+| Google API Keys (AIzaSy…)  | Regex            | ✅     |
+| OpenAI API Keys (sk-…)     | Regex            | ✅     |
+| Anthropic API Keys         | Regex            | ✅     |
+| HuggingFace Tokens (hf\_…) | Regex            | ✅     |
+| Stripe Keys                | Regex            | ✅     |
+| Slack Tokens (xox…)        | Regex            | ✅     |
+| SendGrid Keys (SG.…)       | Regex            | ✅     |
+| Groq API Keys (gsk\_…)     | Regex            | ✅     |
+| OpenRouter API Keys        | Regex            | ✅     |
+| Generic high-entropy keys  | Shannon Entropy  | ✅     |
+
+All detected secrets are **automatically redacted** and replaced with a descriptive placeholder (e.g. `[GOOGLE_API_KEY_REMOVED_BY_SECURITY]`) before the request reaches the LLM. Each unique secret triggers a single WARNING log entry — no repeated spam.
 
 ### Prompt Injection Detection
 
@@ -329,7 +386,7 @@ SentineLLM implements a comprehensive security pipeline:
 - **Dependency Scanning**: Safety + Trivy for vulnerabilities
 - **Code Quality**: Ruff (linting) + mypy (type checking)
 - **Coverage**:
-  - Current: **81%** (Python core + API + CLI + Proxy)
+  - Current: **82%** (Python core + API + CLI + Proxy)
   - Minimum threshold: **80%** enforced in CI/CD
 - **License Compliance**: Automated license checking
 
@@ -373,7 +430,7 @@ See [Security CI/CD Guide](docs/security-cicd.md) for detailed documentation.
 - [x] Shannon entropy calculation
 - [x] **Interactive CLI with configuration wizard**
 - [x] **Multilingual prompt injection detection (5 languages)**
-- [x] **Ollama integration for semantic analysis**
+- [~] **Ollama integration for semantic analysis** _(experimental — pending full validation)_
 - [x] **Interactive demo with test scenarios**
 - [x] **Bilingual support (EN/ES)**
 - [x] **Circuit breaker & fallback strategies**
@@ -381,6 +438,9 @@ See [Security CI/CD Guide](docs/security-cicd.md) for detailed documentation.
 - [x] **Multi-provider LLM proxy (OpenAI, Anthropic, Gemini, Ollama, etc.)**
 - [x] **Auto-configuration for AI agents (OpenClaw, etc.)**
 - [x] **CLI shortcut `sllm` with provider aliases**
+- [x] **Automatic secret redaction with descriptive placeholder** (no config required, always active)
+- [x] **Provider-specific patterns** (Google, OpenAI, Anthropic, HuggingFace, Stripe, Slack, SendGrid, Groq, OpenRouter)
+- [x] **Deduplication of secret warnings** (one log entry per unique secret, no spam)
 - [ ] Logging middleware
 - [ ] Grafana dashboard
 - [ ] Deployment to AWS
@@ -417,7 +477,20 @@ Project: [https://github.com/Allesterdev/sentinellm](https://github.com/Allester
 
 ---
 
-## 🙏 Acknowledgements
+## � Screenshots & Demo
+
+> Screenshots and demo GIF will be added here once the UI stabilises.
+
+<!-- To embed a screenshot:
+![Description](docs/images/screenshot-name.png)
+
+To embed an animated demo (GIF — supported by GitHub Markdown):
+![Demo](docs/images/demo.gif)
+-->
+
+---
+
+## �🙏 Acknowledgements
 
 - [OWASP Top 10 for LLMs](https://owasp.org/www-project-top-10-for-large-language-model-applications/)
 - [FastAPI](https://fastapi.tiangolo.com/)

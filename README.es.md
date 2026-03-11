@@ -11,6 +11,9 @@
 
 [![Security Pipeline](https://github.com/Allesterdev/sentinellm/actions/workflows/security-pipeline.yml/badge.svg)](https://github.com/Allesterdev/sentinellm/actions/workflows/security-pipeline.yml)
 [![CodeQL](https://github.com/Allesterdev/sentinellm/actions/workflows/codeql.yml/badge.svg)](https://github.com/Allesterdev/sentinellm/actions/workflows/codeql.yml)
+[![Status](https://img.shields.io/badge/Estado-MVP%20%2F%20PoC-orange)](https://github.com/Allesterdev/sentinellm)
+
+> ⚠️ **MVP / Proof of Concept** — Las funcionalidades principales (proxy, redacción de secretos, detección de prompt injection) son funcionales y están testeadas. El análisis semántico con Ollama es experimental y está pendiente de validación completa. No recomendado para producción sin pruebas adicionales.
 
 ---
 
@@ -21,14 +24,29 @@ SentineLLM es un **middleware de seguridad** que intercepta el tráfico entre us
 - **Prompt Injections** (entrada) — Detecta intentos de manipular el comportamiento del modelo
 - **Secret Leakage & DLP** (salida) — Evita la fuga de credenciales, claves API y datos sensibles
 
+### 🔐 Redacción Automática de Secretos
+
+Cualquier secreto detectado en un mensaje es **sustituido automáticamente** por un placeholder descriptivo antes de llegar al LLM — sin configuración, siempre activo:
+
+```
+Usuario:   "Mi clave es AIzaSyB-abc123..."
+                  ↓  SentineLLM intercepta
+LLM recibe: "Mi clave es [GOOGLE_API_KEY_REMOVED_BY_SECURITY]"
+```
+
+El secreto **nunca entra en el contexto ni en el historial** del LLM, eliminando el problema de bloqueos en cascada en turnos posteriores. Cada secreto único genera exactamente un aviso WARNING en el log — sin spam.
+
 ### Arquitectura de Defensa en Profundidad
 
 ```
-Usuario → FiltroEntrada → FiltroOllama → [LLM] → FiltroSalida → FiltroDLP → Respuesta
-  ├─ Regex         │                          ├─ Claves AWS
-  ├─ Entropía      │                          ├─ Tokens GitHub
-  └─ Algoritmo Luhn│                          └─ Tarjetas de crédito
-                  └─ Detección semántica ML
+Usuario → RedactorSecretos → FiltroEntrada → FiltroOllama → [LLM] → FiltroSalida → FiltroDLP → Respuesta
+            │                  ├─ Regex                            ├─ AWS / GitHub / Tarjetas
+            │                  ├─ Entropía                         ├─ Google / OpenAI / Anthropic
+            │                  └─ Luhn                            ├─ Stripe / Slack / SendGrid
+            │                                                    ├─ Groq / OpenRouter / HuggingFace
+            ├─ Sustituir por placeholder                        └─ Claves genéricas de entropía
+            └─ 1 WARNING por secreto único (sin spam)
+                                         └─ Detección semántica ML
 ```
 
 ---
@@ -241,33 +259,46 @@ Para referencia completa de la API con todos los endpoints, modelos, códigos de
 sllm proxy openai          # Proxy a OpenAI
 sllm proxy gemini          # Proxy a Google Gemini
 sllm proxy anthropic       # Proxy a Claude
-sllm proxy ollama          # Proxy a Ollama local
+sllm proxy ollama          # Proxy a Ollama local (experimental)
 sllm proxy                 # Selección interactiva de proveedor
 ```
 
-Configura tu aplicación para usar `http://localhost:8080` — funciona con OpenClaw, LangChain, o cualquier cliente LLM.
+El wizard te pedirá que elijas:
 
-#### 🛡️ Protección automática de secretos
+1. **Proveedor** (OpenAI, Gemini, Anthropic, Ollama…)
+2. **Modelo** (p.ej. `gemini-2.0-flash-lite`, `gpt-4o-mini`)
+3. **Clave API** — se guarda de forma segura en `~/.sentinellm.env`, nunca en el repositorio
 
-El proxy redacta **siempre** cualquier secreto detectado en los mensajes, sustituyéndolo por un placeholder descriptivo antes de reenviar la petición al LLM. Nunca bloquea la conversación por secretos.
+A partir de aquí, **toda la configuración del agente se gestiona desde SentineLLM**, no desde el propio agente.
 
-```
-Usuario: "Mi clave es AIzaSyB-abc123"
-                   ↓  SentineLLM intercepta
-LLM recibe: "Mi clave es [API_KEY_REMOVED_BY_SECURITY]"
-```
+#### 🤖 Integración con OpenClaw (paso a paso)
 
-Esto garantiza que el secreto **nunca entra en el contexto del LLM** ni en el historial de conversación, eliminando el problema de re-bloqueo en turnos posteriores. El LLM entiende el placeholder y puede responder de forma útil.
+1. Instalar e iniciar el proxy de SentineLLM:
+   ```bash
+   sllm proxy gemini        # o tu proveedor preferido
+   ```
+2. Auto-configurar el agente OpenClaw:
+   ```bash
+   sllm agent
+   ```
+3. Reiniciar el gateway de OpenClaw para que aplique la nueva configuración:
 
-| Variable | Valores | Por defecto | Descripción |
-|---|---|---|---|
-| `SENTINELLM_MIN_BLOCK_LEVEL` | `LOW` / `MEDIUM` / `HIGH` / `CRITICAL` | `MEDIUM` | Nivel mínimo para bloquear inyecciones de prompt |
-| `SENTINELLM_VALIDATE_OUTPUT` | `true` / `false` | `true` | Validar también la respuesta del LLM (DLP) |
-Para auto-configurar un agente IA (OpenClaw, etc.):
+   ```bash
+   openclaw gateway restart
+   ```
 
-```bash
-sllm agent                 # Auto-configuración interactiva de agentes
-```
+   > **Nota:** `openclaw gateway restart` debe ejecutarse **después** de que `sllm agent` haya terminado. El proxy puede iniciarse antes o después — OpenClaw enrutará a través de él en el siguiente reinicio del gateway.
+
+4. Todo el tráfico fluye ahora a través de SentineLLM: `OpenClaw → proxy SentineLLM → LLM`
+
+> ⚠️ **Ollama como proveedor LLM:** funcional pero pendiente de validación completa en escenarios de producción. Los tiempos de respuesta pueden ser más lentos que los proveedores cloud.
+
+#### ⚙️ Variables de Entorno
+
+| Variable                     | Valores                                | Por defecto | Descripción                                      |
+| ---------------------------- | -------------------------------------- | ----------- | ------------------------------------------------ |
+| `SENTINELLM_MIN_BLOCK_LEVEL` | `LOW` / `MEDIUM` / `HIGH` / `CRITICAL` | `MEDIUM`    | Nivel mínimo para bloquear inyecciones de prompt |
+| `SENTINELLM_VALIDATE_OUTPUT` | `true` / `false`                       | `true`      | Validar también la respuesta del LLM (DLP)       |
 
 **→ [Documentación Completa del Proxy](docs/proxy.md)**
 
@@ -304,15 +335,27 @@ sentinellm/
 
 ### Detección de Secretos
 
-| Tipo                   | Método           | Estado |
-| ---------------------- | ---------------- | ------ |
-| AWS Access Keys (AKIA) | Regex + Checksum | ✅     |
-| AWS Secret Keys        | Regex + Entropía | ✅     |
-| GitHub Tokens          | Regex            | ✅     |
-| Bearer Tokens          | Regex            | ✅     |
-| JWT Tokens             | Regex            | ✅     |
-| Tarjetas de Crédito    | Luhn Algorithm   | ✅     |
-| Claves Privadas (PEM)  | Regex            | ✅     |
+| Tipo                         | Método           | Estado |
+| ---------------------------- | ---------------- | ------ |
+| AWS Access Keys (AKIA)       | Regex + Checksum | ✅     |
+| AWS Secret Keys              | Regex + Entropía | ✅     |
+| GitHub Tokens                | Regex            | ✅     |
+| Bearer Tokens                | Regex            | ✅     |
+| JWT Tokens                   | Regex            | ✅     |
+| Tarjetas de Crédito          | Luhn Algorithm   | ✅     |
+| Claves Privadas (PEM)        | Regex            | ✅     |
+| Google API Keys (AIzaSy…)    | Regex            | ✅     |
+| OpenAI API Keys (sk-…)       | Regex            | ✅     |
+| Anthropic API Keys           | Regex            | ✅     |
+| HuggingFace Tokens (hf\_…)   | Regex            | ✅     |
+| Stripe Keys                  | Regex            | ✅     |
+| Slack Tokens (xox…)          | Regex            | ✅     |
+| SendGrid Keys (SG.…)         | Regex            | ✅     |
+| Groq API Keys (gsk\_…)       | Regex            | ✅     |
+| OpenRouter API Keys          | Regex            | ✅     |
+| Claves genéricas de entropía | Entropía Shannon | ✅     |
+
+Todos los secretos detectados son **redactados automáticamente** y sustituidos por un placeholder descriptivo (p.ej. `[GOOGLE_API_KEY_REMOVED_BY_SECURITY]`) antes de que la petición llegue al LLM. Cada secreto único genera una sola entrada WARNING en el log — sin spam repetido.
 
 ### Detección de Prompt Injection
 
@@ -341,7 +384,7 @@ SentineLLM implementa un pipeline completo de seguridad:
 - **Escaneo de Dependencias**: Safety + Trivy para vulnerabilidades
 - **Calidad de Código**: Ruff (linting) + mypy (type checking)
 - **Cobertura**:
-  - Actual: **81%** (Python core + API + CLI + Proxy)
+  - Actual: **82%** (Python core + API + CLI + Proxy)
   - Mínimo obligatorio: **80%** en CI/CD
 - **Cumplimiento de Licencias**: Verificación automática de licencias
 
@@ -385,7 +428,7 @@ Consulta la [Guía de CI/CD de Seguridad](docs/security-cicd.md) para documentac
 - [x] Cálculo de entropía Shannon
 - [x] **CLI interactivo con wizard de configuración**
 - [x] **Detección multilingüe de prompt injection (5 idiomas)**
-- [x] **Integración con Ollama para análisis semántico**
+- [~] **Integración con Ollama para análisis semántico** _(experimental — pendiente de validación completa)_
 - [x] **Demo interactivo con escenarios de prueba**
 - [x] **Soporte bilingüe (EN/ES)**
 - [x] **Circuit breaker y estrategias de fallback**
@@ -394,6 +437,8 @@ Consulta la [Guía de CI/CD de Seguridad](docs/security-cicd.md) para documentac
 - [x] **Auto-configuración para agentes IA (OpenClaw, etc.)**
 - [x] **Atajo CLI `sllm` con alias de proveedores**
 - [x] **Redacción automática de secretos con placeholder descriptivo** (sin configuración, siempre activo)
+- [x] **Patrones específicos por proveedor** (Google, OpenAI, Anthropic, HuggingFace, Stripe, Slack, SendGrid, Groq, OpenRouter)
+- [x] **Deduplicación de avisos de secretos** (un único log por secreto, sin spam)
 - [ ] Middleware de logging
 - [ ] Dashboard Grafana
 - [ ] Deployment en AWS
@@ -430,7 +475,20 @@ Proyecto: [https://github.com/Allesterdev/sentinellm](https://github.com/Alleste
 
 ---
 
-## 🙏 Agradecimientos
+## � Capturas y Demo
+
+> Las capturas de pantalla y el GIF de demo se añadirán aquí una vez que la interfaz esté estabilizada.
+
+<!-- Para insertar una captura:
+![Descripción](docs/images/nombre-captura.png)
+
+Para insertar una demo animada (GIF — soportado en Markdown de GitHub):
+![Demo](docs/images/demo.gif)
+-->
+
+---
+
+## �🙏 Agradecimientos
 
 - [OWASP Top 10 for LLMs](https://owasp.org/www-project-top-10-for-large-language-model-applications/)
 - [FastAPI](https://fastapi.tiangolo.com/)
