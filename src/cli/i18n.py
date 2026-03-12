@@ -561,27 +561,27 @@ STRINGS = {
 }
 
 # Global language setting
-_current_language = "en"
+_state = {"language": "en"}
 
 
 def set_language(lang: str) -> None:
     """Set the current language."""
-    global _current_language
     if lang in STRINGS:
-        _current_language = lang
+        _state["language"] = lang
     else:
         raise ValueError(f"Unsupported language: {lang}. Available: {list(STRINGS.keys())}")
 
 
 def get_language() -> str:
     """Get the current language."""
-    return _current_language
+    return _state["language"]
 
 
 def t(key: str) -> str:
     """Translate a string key to the current language."""
-    if key in STRINGS[_current_language]:
-        return STRINGS[_current_language][key]
+    lang = _state["language"]
+    if key in STRINGS[lang]:
+        return STRINGS[lang][key]
     else:
         # Fallback to English if key not found
         if key in STRINGS["en"]:

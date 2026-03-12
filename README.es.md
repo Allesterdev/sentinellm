@@ -51,7 +51,20 @@ Usuario → RedactorSecretos → FiltroEntrada → FiltroOllama → [LLM] → Fi
 
 ---
 
-## 🚀 Inicio Rápido
+## � Capturas y Demo
+
+> Las capturas de pantalla y el GIF de demo se añadirán aquí una vez que la interfaz esté estabilizada.
+
+<!-- Para insertar una captura:
+![Descripción](docs/images/nombre-captura.png)
+
+Para insertar una demo animada (GIF — soportado en Markdown de GitHub):
+![Demo](docs/images/demo.gif)
+-->
+
+---
+
+## �🚀 Inicio Rápido
 
 ### Prerequisitos
 
@@ -76,38 +89,63 @@ pip install .
 
 Esto instala todas las dependencias **y** registra el comando `sllm` globalmente.
 
-> **Para desarrolladores:** Usa `pip install -e .` para instalación editable (los cambios aplican inmediatamente).
-
-### 🎉 Configuración Interactiva
-
-Tras la instalación, el comando `sllm` está disponible:
+Una vez instalado, ejecuta el wizard interactivo para completar la configuración:
 
 ```bash
-# Ejecutar el wizard de configuración
 sllm
+```
 
-# Comandos rápidos con atajos de proveedor
+El wizard te guiará por idioma, capas de detección, proveedor, modelo, clave API y, opcionalmente, configurará tu agente IA (OpenClaw, etc.).
+
+> **Para desarrolladores:** Usa `pip install -e .` para instalación editable (los cambios aplican inmediatamente).
+
+### 🚀 Primeros Pasos: Proxy + Configuración del Agente
+
+El uso principal: enrutar todo el tráfico del agente IA a través de SentineLLM.
+
+1. **Inicia el proxy** — el wizard pedirá proveedor, modelo y clave API:
+
+   ```bash
+   sllm proxy gemini        # o: openai, anthropic, ollama
+   ```
+
+   > La clave API se guarda en `~/.sentinellm.env` — nunca en el repositorio.
+
+2. **Reinicia el gateway del agente** para que aplique la nueva configuración:
+
+   ```bash
+   openclaw gateway restart
+   ```
+
+   > **Nota:** `openclaw gateway restart` debe ejecutarse después de que el agente haya sido configurado. El proxy puede estar corriendo antes o después — OpenClaw enrutará a través de él en el siguiente reinicio.
+
+Todo el tráfico fluye ahora: `OpenClaw → proxy SentineLLM → LLM` ✅
+
+> **¿Agente no configurado todavía?** Si saltaste la configuración del agente durante el wizard `sllm`, puedes ejecutar `sllm agent` en cualquier momento y luego reiniciar el gateway.
+
+> A partir de aquí, **toda la configuración del agente se gestiona desde SentineLLM**, no desde el propio OpenClaw.
+
+### 📋 Todos los Comandos Disponibles
+
+```bash
+sllm                       # Wizard de configuración interactivo
 sllm proxy openai          # Iniciar proxy → OpenAI
 sllm proxy anthropic       # Iniciar proxy → Anthropic (Claude)
 sllm proxy gemini          # Iniciar proxy → Google Gemini
-sllm proxy ollama          # Iniciar proxy → Ollama (local)
+sllm proxy ollama          # Iniciar proxy → Ollama (local, experimental)
 sllm proxy                 # Selección interactiva de proveedor
-
-# Auto-configurar agentes IA (OpenClaw, etc.)
-sllm agent
-
-# Otros comandos
+sllm agent                 # Auto-configurar agentes IA
 sllm setup                 # Configuración inicial
 sllm config                # Cambiar configuración
 sllm demo                  # Ejecutar demo interactivo
 sllm check-ollama          # Ver estado de Ollama
 ```
 
-El wizard te guía a través de:
+El wizard de configuración también te guía por:
 
 - 🌍 **Selección de idioma** (English/Español)
 - 🔧 **Capas de detección** (Regex, LLM)
-- 🤖 **Configuración de Ollama** (Local, VPC, Externo)
+- 🤖 **Configuración de Ollama** (Local, VPC, Externo) _(experimental)_
 - ⚙️ **Circuit breaker y estrategias de respaldo**
 - 🔐 **Patrones de detección de secretos**
 
@@ -250,48 +288,9 @@ Para referencia completa de la API con todos los endpoints, modelos, códigos de
 
 **→ [Ver Documentación Completa de la API](docs/api-reference.md)**
 
-### 🔒 Proxy LLM (Integración Universal)
+### 🔒 Proxy LLM
 
-**Proxy HTTP transparente** que protege CUALQUIER aplicación LLM:
-
-```bash
-# Iniciar el proxy con atajos de proveedor
-sllm proxy openai          # Proxy a OpenAI
-sllm proxy gemini          # Proxy a Google Gemini
-sllm proxy anthropic       # Proxy a Claude
-sllm proxy ollama          # Proxy a Ollama local (experimental)
-sllm proxy                 # Selección interactiva de proveedor
-```
-
-El wizard te pedirá que elijas:
-
-1. **Proveedor** (OpenAI, Gemini, Anthropic, Ollama…)
-2. **Modelo** (p.ej. `gemini-2.0-flash-lite`, `gpt-4o-mini`)
-3. **Clave API** — se guarda de forma segura en `~/.sentinellm.env`, nunca en el repositorio
-
-A partir de aquí, **toda la configuración del agente se gestiona desde SentineLLM**, no desde el propio agente.
-
-#### 🤖 Integración con OpenClaw (paso a paso)
-
-1. Instalar e iniciar el proxy de SentineLLM:
-   ```bash
-   sllm proxy gemini        # o tu proveedor preferido
-   ```
-2. Auto-configurar el agente OpenClaw:
-   ```bash
-   sllm agent
-   ```
-3. Reiniciar el gateway de OpenClaw para que aplique la nueva configuración:
-
-   ```bash
-   openclaw gateway restart
-   ```
-
-   > **Nota:** `openclaw gateway restart` debe ejecutarse **después** de que `sllm agent` haya terminado. El proxy puede iniciarse antes o después — OpenClaw enrutará a través de él en el siguiente reinicio del gateway.
-
-4. Todo el tráfico fluye ahora a través de SentineLLM: `OpenClaw → proxy SentineLLM → LLM`
-
-> ⚠️ **Ollama como proveedor LLM:** funcional pero pendiente de validación completa en escenarios de producción. Los tiempos de respuesta pueden ser más lentos que los proveedores cloud.
+Configura tu aplicación para apuntar a `http://localhost:8080` — compatible con OpenClaw, LangChain, o cualquier cliente LLM. Consulta [Primeros Pasos](#-primeros-pasos-proxy--configuraci%C3%B3n-del-agente) para la guía completa.
 
 #### ⚙️ Variables de Entorno
 
@@ -359,12 +358,19 @@ Todos los secretos detectados son **redactados automáticamente** y sustituidos 
 
 ### Detección de Prompt Injection
 
-| Capa  | Método             | Idiomas            | Patrones | Estado |
-| ----- | ------------------ | ------------------ | -------- | ------ |
-| Regex | Pattern matching   | 5 (EN/ES/PT/FR/DE) | 41       | ✅     |
-| LLM   | Análisis semántico | Cualquiera         | N/A      | ✅     |
+| Capa     | Método                             | Idiomas            | Cobertura   | Estado |
+| -------- | ---------------------------------- | ------------------ | ----------- | ------ |
+| Regex    | Pattern matching                   | 5 (EN/ES/PT/FR/DE) | 41 patrones | ✅     |
+| Keywords | Puntuación ponderada (95 términos) | 5 (EN/ES/PT/FR/DE) | Sin tildes  | ✅     |
+| LLM      | Análisis semántico                 | Cualquiera         | N/A         | ✅     |
 
 **Protección Multilingüe**: Detecta ataques en inglés, español, portugués, francés y alemán
+
+La capa de keywords usa **normalización de acentos** (`unicodedata.NFKD`) para que `"instrucción"` e `"instruccion"` sean equivalentes. Umbrales de puntuación:
+
+- `>= 4` → `LOW` (registrado, permitido por defecto)
+- `>= 8` → `MEDIUM` (bloqueado por defecto)
+- `>= 14` → `HIGH`
 
 - 🇬🇧 Sobreescritura de instrucciones (ignore, disregard, forget)
 - 🇯🇵 Manipulación de rol (actúa como, ahora eres, finge)
@@ -427,7 +433,7 @@ Consulta la [Guía de CI/CD de Seguridad](docs/security-cicd.md) para documentac
 - [x] Validador Luhn para tarjetas de crédito
 - [x] Cálculo de entropía Shannon
 - [x] **CLI interactivo con wizard de configuración**
-- [x] **Detección multilingüe de prompt injection (5 idiomas)**
+- [x] **Detección multilingüe de prompt injection (5 idiomas) — regex + keyword scoring + normalización de acentos**
 - [~] **Integración con Ollama para análisis semántico** _(experimental — pendiente de validación completa)_
 - [x] **Demo interactivo con escenarios de prueba**
 - [x] **Soporte bilingüe (EN/ES)**
@@ -439,7 +445,7 @@ Consulta la [Guía de CI/CD de Seguridad](docs/security-cicd.md) para documentac
 - [x] **Redacción automática de secretos con placeholder descriptivo** (sin configuración, siempre activo)
 - [x] **Patrones específicos por proveedor** (Google, OpenAI, Anthropic, HuggingFace, Stripe, Slack, SendGrid, Groq, OpenRouter)
 - [x] **Deduplicación de avisos de secretos** (un único log por secreto, sin spam)
-- [ ] Middleware de logging
+- [ ] Logging JSON estructurado _(prerequisito para Grafana + SIEM)_
 - [ ] Dashboard Grafana
 - [ ] Deployment en AWS
 - [ ] Integración SIEM
@@ -475,20 +481,7 @@ Proyecto: [https://github.com/Allesterdev/sentinellm](https://github.com/Alleste
 
 ---
 
-## � Capturas y Demo
-
-> Las capturas de pantalla y el GIF de demo se añadirán aquí una vez que la interfaz esté estabilizada.
-
-<!-- Para insertar una captura:
-![Descripción](docs/images/nombre-captura.png)
-
-Para insertar una demo animada (GIF — soportado en Markdown de GitHub):
-![Demo](docs/images/demo.gif)
--->
-
----
-
-## �🙏 Agradecimientos
+## 🙏 Agradecimientos
 
 - [OWASP Top 10 for LLMs](https://owasp.org/www-project-top-10-for-large-language-model-applications/)
 - [FastAPI](https://fastapi.tiangolo.com/)

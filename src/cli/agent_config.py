@@ -343,7 +343,6 @@ def _create_openclaw_default_config() -> dict[str, Any]:
 def _patch_openclaw_config(
     config_data: dict[str, Any],
     provider_name: str,
-    original_base_url: str,
     proxy_url: str,
     model_id: str | None = None,
     model_name: str | None = None,
@@ -361,7 +360,6 @@ def _patch_openclaw_config(
     Args:
       config_data: Existing OpenClaw config dict to patch.
       provider_name: Provider ID (e.g., "gemini", "openai").
-      original_base_url: Original provider base URL.
       proxy_url: SentineLLM proxy URL.
       model_id: Override the default model ID (e.g., "gemini-2.5-flash").
       model_name: Override the default display name for the model.
@@ -477,7 +475,7 @@ def _patch_openclaw_config(
                 f"${{{model_info['api_key_env']}}}"  # pragma: allowlist secret
             )
     elif provider_name == "ollama":
-        provider_entry["apiKey"] = "ollama-local"
+        provider_entry["apiKey"] = "ollama-local"  # pragma: allowlist secret
 
     providers[custom_provider] = provider_entry
 
@@ -695,7 +693,6 @@ def configure_agent_interactive(
             config_data = _patch_openclaw_config(
                 config_data,
                 provider_id,
-                preset["base_url"],
                 proxy_url,
                 model_id=mid,
                 model_name=mname,
@@ -1077,7 +1074,6 @@ def quick_configure_openclaw(
         config_data = _patch_openclaw_config(
             config_data,
             prov,
-            preset["base_url"],
             proxy_url,
             model_id=model_id,
         )
@@ -1090,4 +1086,104 @@ def quick_configure_openclaw(
     _write_env_file(providers)
 
     print(f"✅ OpenClaw configured with {len(providers)} provider(s)")
+    return True
+
+
+# ── Uninstall / restore ──────────────────────────────────────────────────
+
+
+def uninstall_agent_interactive() -> bool:
+    """Restore an AI agent config to its pre-SentineLLM state.
+
+    When ``sllm agent`` configures an agent it saves a ``<config>.bak`` backup.
+    This wizard finds that backup and restores it, effectively undoing the
+    SentineLLM integration.  Also offers to delete ``~/.sentinellm.env``.
+
+    Returns True if something was restored, False if cancelled/nothing found.
+    """
+    if questionary is None:
+        print(f"❌ {t('questionary_error')}")
+        return False
+
+    print("\n" + "=" * 70)
+    print("🗑️  SentineLLM — Uninstall / Restore agent configuration")
+    print("=" * 70)
+
+    # ── Detect agents that have a .bak backup created by sllm agent ─────
+    detected = _detect_installed_agents()
+    if not detected:
+        print("\n  ℹ️  No AI agent configuration found on this system.")
+        return False
+
+    # agent_id → (config_path, backup_path)
+    restorable: dict[str, tuple[Path, Path]] = {}
+    for agent_id, config_path in detected.items():
+        backup_path = config_path.with_suffix(config_path.suffix + ".bak")
+        if backup_path.exists():
+            restorable[agent_id] = (config_path, backup_path)
+
+    if not restorable:
+        print("\n  ℹ️  No backup files found.")
+        print("     SentineLLM saves a backup when you run 'sllm agent'.")
+        print("     If you never ran 'sllm agent', there is nothing to restore.")
+        return False
+
+    # ── Choose agent ─────────────────────────────────────────────────────
+    agent_choices = []
+    for agent_id, (config_path, backup_path) in restorable.items():
+        agent_name = KNOWN_AGENTS[agent_id]["name"]
+        agent_choices.append(
+            questionary.Choice(
+                f"  {agent_name}\n    Config:  {config_path}\n    Backup:  {backup_path}",
+                value=agent_id,
+            )
+        )
+    agent_choices.append(questionary.Choice("⏭️  Cancel", value="cancel"))
+
+    selected = questionary.select(
+        "Which agent do you want to restore?",
+        choices=agent_choices,
+    ).ask()
+
+    if selected is None or selected == "cancel":
+        print("  ℹ️  Cancelled.")
+        return False
+
+    config_path, backup_path = restorable[selected]
+    agent_name = KNOWN_AGENTS[selected]["name"]
+
+    # ── Confirm ───────────────────────────────────────────────────────────
+    print(f"\n  This will replace:\n    {config_path}")
+    print(f"  with the original backup:\n    {backup_path}")
+
+    confirm = questionary.confirm(
+        "  Proceed?",
+        default=True,
+    ).ask()
+
+    if not confirm:
+        print("  ℹ️  Cancelled.")
+        return False
+
+    # ── Restore ───────────────────────────────────────────────────────────
+    shutil.copy2(config_path, config_path.with_suffix(config_path.suffix + ".pre-uninstall"))
+    shutil.copy2(backup_path, config_path)
+    print(f"\n  ✅ {agent_name} config restored from backup.")
+    print(
+        f"     (Previous state saved to {config_path.with_suffix(config_path.suffix + '.pre-uninstall')})"
+    )
+
+    # ── Offer to delete ~/.sentinellm.env ─────────────────────────────────
+    env_path = Path.home() / ".sentinellm.env"
+    if env_path.exists():
+        delete_env = questionary.confirm(
+            f"\n  Also delete {env_path}?",
+            default=True,
+        ).ask()
+        if delete_env:
+            env_path.unlink()
+            print(f"  🗑️  Deleted {env_path}")
+
+    print(f"\n  ✅ Done. Restart {agent_name} for changes to take effect.")
+    print("=" * 70)
     return True

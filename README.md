@@ -51,7 +51,20 @@ User → SecretRedactor → InputFilter → OllamaFilter → [LLM] → OutputFil
 
 ---
 
-## 🚀 Quick Start
+## � Screenshots & Demo
+
+> Screenshots and demo GIF will be added here once the UI stabilises.
+
+<!-- To embed a screenshot:
+![Description](docs/images/screenshot-name.png)
+
+To embed an animated demo (GIF — supported by GitHub Markdown):
+![Demo](docs/images/demo.gif)
+-->
+
+---
+
+## �🚀 Quick Start
 
 ### Prerequisites
 
@@ -76,38 +89,63 @@ pip install .
 
 This installs all dependencies **and** registers the `sllm` command globally.
 
-> **For developers:** Use `pip install -e .` for editable install (changes take effect immediately).
-
-### 🎉 Interactive Setup
-
-After installation, the `sllm` command is available:
+Once installed, run the interactive wizard to complete the setup:
 
 ```bash
-# Run the interactive setup wizard
 sllm
+```
 
-# Short commands with provider shortcuts
+The wizard will guide you through language, detection layers, provider, model, API key, and optionally configure your AI agent (OpenClaw, etc.).
+
+> **For developers:** Use `pip install -e .` for editable install (changes take effect immediately).
+
+### 🚀 First Steps: Proxy + Agent Setup
+
+The main use case: route all AI agent traffic through SentineLLM.
+
+1. **Start the proxy** — the wizard will ask for provider, model and API key:
+
+   ```bash
+   sllm proxy gemini        # or: openai, anthropic, ollama
+   ```
+
+   > The API key is stored in `~/.sentinellm.env` — never committed to the repo.
+
+2. **Restart the agent gateway** so it picks up the new route:
+
+   ```bash
+   openclaw gateway restart
+   ```
+
+   > **Note:** `openclaw gateway restart` must run **after** the agent has been configured. The proxy can be started before or after — OpenClaw will route through it on the next gateway restart.
+
+All traffic now flows: `OpenClaw → SentineLLM proxy → LLM` ✅
+
+> **Agent not configured yet?** If you skipped agent setup during the `sllm` wizard, run `sllm agent` at any time to configure it, then restart the gateway.
+
+> From this point, **all agent configuration is managed through SentineLLM**, not directly in OpenClaw.
+
+### 📋 All Available Commands
+
+```bash
+sllm                       # Interactive setup wizard
 sllm proxy openai          # Start proxy → OpenAI
 sllm proxy anthropic       # Start proxy → Anthropic (Claude)
 sllm proxy gemini          # Start proxy → Google Gemini
-sllm proxy ollama          # Start proxy → Ollama (local)
+sllm proxy ollama          # Start proxy → Ollama (local, experimental)
 sllm proxy                 # Interactive provider selection
-
-# Auto-configure AI agents (OpenClaw, etc.)
-sllm agent
-
-# Other commands
+sllm agent                 # Auto-configure AI agents
 sllm setup                 # Initial configuration
 sllm config                # Change configuration
 sllm demo                  # Run interactive demo
 sllm check-ollama          # Check Ollama status
 ```
 
-The wizard guides you through:
+The setup wizard also guides you through:
 
 - 🌍 **Language selection** (English/Español)
 - 🔧 **Detection layers** (Regex, LLM)
-- 🤖 **Ollama configuration** (Local, VPC, External)
+- 🤖 **Ollama configuration** (Local, VPC, External) _(experimental)_
 - ⚙️ **Circuit breaker & fallback** settings
 - 🔐 **Secret detection** patterns
 
@@ -250,48 +288,9 @@ For complete API reference with all endpoints, models, error codes, and integrat
 
 **→ [View Complete API Documentation](docs/api-reference.md)**
 
-### 🔒 LLM Proxy (Universal Integration)
+### 🔒 LLM Proxy
 
-**Transparent HTTP proxy** that protects ANY LLM application:
-
-```bash
-# Start the proxy with provider shortcuts
-sllm proxy openai          # Proxy to OpenAI
-sllm proxy gemini          # Proxy to Google Gemini
-sllm proxy anthropic       # Proxy to Claude
-sllm proxy ollama          # Proxy to local Ollama (experimental)
-sllm proxy                 # Interactive provider selection
-```
-
-The wizard will ask you to choose:
-
-1. **Provider** (OpenAI, Gemini, Anthropic, Ollama…)
-2. **Model** (e.g. `gemini-2.0-flash-lite`, `gpt-4o-mini`)
-3. **API Key** — stored securely in `~/.sentinellm.env`, never committed
-
-From this point, **all agent configuration is managed through SentineLLM**, not directly in the agent.
-
-#### 🤖 OpenClaw Integration (step-by-step)
-
-1. Install and start SentineLLM proxy:
-   ```bash
-   sllm proxy gemini        # or your preferred provider
-   ```
-2. Auto-configure the OpenClaw agent:
-   ```bash
-   sllm agent
-   ```
-3. Restart the OpenClaw gateway so it picks up the new configuration:
-
-   ```bash
-   openclaw gateway restart
-   ```
-
-   > **Note:** `openclaw gateway restart` must be run **after** `sllm agent` completes. The proxy can be started before or after — OpenClaw will route through it on the next gateway restart.
-
-4. All traffic now flows through SentineLLM: `OpenClaw → SentineLLM proxy → LLM`
-
-> ⚠️ **Ollama as LLM provider:** functional but pending full validation in production scenarios. Response times may be slower than cloud providers.
+Configure your app to point to `http://localhost:8080` — compatible with OpenClaw, LangChain, or any LLM client. See [First Steps](#-first-steps-proxy--agent-setup) above for the full setup guide.
 
 #### ⚙️ Environment Variables
 
@@ -361,12 +360,19 @@ All detected secrets are **automatically redacted** and replaced with a descript
 
 ### Prompt Injection Detection
 
-| Layer | Method            | Languages          | Patterns | Status |
-| ----- | ----------------- | ------------------ | -------- | ------ |
-| Regex | Pattern matching  | 5 (EN/ES/PT/FR/DE) | 41       | ✅     |
-| LLM   | Semantic analysis | Any                | N/A      | ✅     |
+| Layer    | Method                      | Languages          | Coverage        | Status |
+| -------- | --------------------------- | ------------------ | --------------- | ------ |
+| Regex    | Pattern matching            | 5 (EN/ES/PT/FR/DE) | 41 patterns     | ✅     |
+| Keywords | Weighted scoring (95 terms) | 5 (EN/ES/PT/FR/DE) | Accent-agnostic | ✅     |
+| LLM      | Semantic analysis           | Any                | N/A             | ✅     |
 
 **Multilingual Protection**: Detects attacks in English, Spanish, Portuguese, French, and German
+
+The keyword layer uses **accent-normalized scoring** (`unicodedata.NFKD`) so `"instrucción"` and `"instruccion"` are treated identically. Score thresholds:
+
+- `>= 4` → `LOW` (logged, allowed by default)
+- `>= 8` → `MEDIUM` (blocked by default)
+- `>= 14` → `HIGH`
 
 - 🇬🇧 Instruction override (ignore, disregard, forget)
 - 🇯🇵 Role manipulation (act as, you are now, pretend)
@@ -429,7 +435,7 @@ See [Security CI/CD Guide](docs/security-cicd.md) for detailed documentation.
 - [x] Luhn validator for credit cards
 - [x] Shannon entropy calculation
 - [x] **Interactive CLI with configuration wizard**
-- [x] **Multilingual prompt injection detection (5 languages)**
+- [x] **Multilingual prompt injection detection (5 languages) — regex + keyword scoring + accent normalization**
 - [~] **Ollama integration for semantic analysis** _(experimental — pending full validation)_
 - [x] **Interactive demo with test scenarios**
 - [x] **Bilingual support (EN/ES)**
@@ -441,7 +447,7 @@ See [Security CI/CD Guide](docs/security-cicd.md) for detailed documentation.
 - [x] **Automatic secret redaction with descriptive placeholder** (no config required, always active)
 - [x] **Provider-specific patterns** (Google, OpenAI, Anthropic, HuggingFace, Stripe, Slack, SendGrid, Groq, OpenRouter)
 - [x] **Deduplication of secret warnings** (one log entry per unique secret, no spam)
-- [ ] Logging middleware
+- [ ] Structured JSON logging _(prerequisite for Grafana + SIEM)_
 - [ ] Grafana dashboard
 - [ ] Deployment to AWS
 - [ ] SIEM integration
@@ -477,20 +483,7 @@ Project: [https://github.com/Allesterdev/sentinellm](https://github.com/Allester
 
 ---
 
-## � Screenshots & Demo
-
-> Screenshots and demo GIF will be added here once the UI stabilises.
-
-<!-- To embed a screenshot:
-![Description](docs/images/screenshot-name.png)
-
-To embed an animated demo (GIF — supported by GitHub Markdown):
-![Demo](docs/images/demo.gif)
--->
-
----
-
-## �🙏 Acknowledgements
+## 🙏 Acknowledgements
 
 - [OWASP Top 10 for LLMs](https://owasp.org/www-project-top-10-for-large-language-model-applications/)
 - [FastAPI](https://fastapi.tiangolo.com/)

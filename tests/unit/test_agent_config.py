@@ -110,7 +110,7 @@ class TestSelectModelForProvider:
     def test_fallback_for_unknown_provider(self):
         """Returns default-model for unknown providers."""
         with patch("src.cli.agent_config.questionary", None):
-            model_id, model_name = _select_model_for_provider("unknown-provider")
+            model_id, _ = _select_model_for_provider("unknown-provider")
             assert model_id == "default-model"
 
 
@@ -202,12 +202,11 @@ class TestPatchWithApiKeyValue:
         result = _patch_openclaw_config(
             {},
             "gemini",
-            "https://generativelanguage.googleapis.com",
             self.PROXY,
             api_key_value="my-literal-key-123",  # pragma: allowlist secret
         )
         provider = result["models"]["providers"]["sentinellm-gemini"]
-        assert provider["apiKey"] == "my-literal-key-123"
+        assert provider["apiKey"] == "my-literal-key-123"  # pragma: allowlist secret
         assert "${" not in provider["apiKey"]
 
     def test_env_ref_when_no_key_anywhere(self):
@@ -217,7 +216,6 @@ class TestPatchWithApiKeyValue:
             result = _patch_openclaw_config(
                 {},
                 "gemini",
-                "https://generativelanguage.googleapis.com",
                 self.PROXY,
             )
         provider = result["models"]["providers"]["sentinellm-gemini"]
@@ -240,11 +238,10 @@ class TestPatchWithApiKeyValue:
             result = _patch_openclaw_config(
                 config,
                 "gemini",
-                "https://generativelanguage.googleapis.com",
                 self.PROXY,
             )
         provider = result["models"]["providers"]["sentinellm-gemini"]
-        assert provider["apiKey"] == "AIzaSyLiteralKey123"
+        assert provider["apiKey"] == "AIzaSyLiteralKey123"  # pragma: allowlist secret
         assert "${" not in provider["apiKey"]
 
     def test_recovers_key_from_existing_sentinellm_provider(self):
@@ -266,11 +263,10 @@ class TestPatchWithApiKeyValue:
             result = _patch_openclaw_config(
                 config,
                 "gemini",
-                "https://generativelanguage.googleapis.com",
                 self.PROXY,
             )
         provider = result["models"]["providers"]["sentinellm-gemini"]
-        assert provider["apiKey"] == "AIzaSyPreviousKey456"
+        assert provider["apiKey"] == "AIzaSyPreviousKey456"  # pragma: allowlist secret
 
     def test_ignores_env_var_reference_in_existing_config(self):
         """Existing ${VAR} reference is NOT treated as a literal key."""
@@ -288,7 +284,6 @@ class TestPatchWithApiKeyValue:
             result = _patch_openclaw_config(
                 config,
                 "gemini",
-                "https://generativelanguage.googleapis.com",
                 self.PROXY,
             )
         provider = result["models"]["providers"]["sentinellm-gemini"]
@@ -298,16 +293,16 @@ class TestPatchWithApiKeyValue:
     def test_recovers_key_from_env_var(self):
         """Uses env var value as literal if it exists in environment."""
         with patch.dict(
-            os.environ, {"GEMINI_API_KEY": "AIzaFromEnv789"}
-        ):  # pragma: allowlist secret
+            os.environ,
+            {"GEMINI_API_KEY": "AIzaFromEnv789"},  # pragma: allowlist secret
+        ):
             result = _patch_openclaw_config(
                 {},
                 "gemini",
-                "https://generativelanguage.googleapis.com",
                 self.PROXY,
             )
         provider = result["models"]["providers"]["sentinellm-gemini"]
-        assert provider["apiKey"] == "AIzaFromEnv789"
+        assert provider["apiKey"] == "AIzaFromEnv789"  # pragma: allowlist secret
         assert "${" not in provider["apiKey"]
 
     def test_explicit_api_key_value_takes_priority(self):
@@ -325,12 +320,11 @@ class TestPatchWithApiKeyValue:
             result = _patch_openclaw_config(
                 config,
                 "gemini",
-                "https://generativelanguage.googleapis.com",
                 self.PROXY,
                 api_key_value="AIzaSyExplicit",  # pragma: allowlist secret
             )
         provider = result["models"]["providers"]["sentinellm-gemini"]
-        assert provider["apiKey"] == "AIzaSyExplicit"
+        assert provider["apiKey"] == "AIzaSyExplicit"  # pragma: allowlist secret
 
 
 # ── Tests for _find_agent_config ────────────────────────────────────────
@@ -578,47 +572,41 @@ class TestPatchOpenclawConfig:
 
     def test_patch_creates_custom_provider_name(self):
         """Patching creates 'sentinellm-openai', not 'openai'."""
-        result = _patch_openclaw_config({}, "openai", "https://api.openai.com", self.PROXY)
+        result = _patch_openclaw_config({}, "openai", self.PROXY)
         assert "sentinellm-openai" in result["models"]["providers"]
         assert "openai" not in result["models"]["providers"]
 
     def test_patch_sets_base_url_on_custom_provider(self):
         """Custom provider's baseUrl points to the SentineLLM proxy."""
-        result = _patch_openclaw_config({}, "openai", "https://api.openai.com", self.PROXY)
+        result = _patch_openclaw_config({}, "openai", self.PROXY)
         assert result["models"]["providers"]["sentinellm-openai"]["baseUrl"] == self.PROXY
 
     def test_patch_sets_models_mode_merge(self):
         """models.mode is always set to 'merge' to preserve other providers."""
-        result = _patch_openclaw_config(
-            {}, "gemini", "https://generativelanguage.googleapis.com", self.PROXY
-        )
+        result = _patch_openclaw_config({}, "gemini", self.PROXY)
         assert result["models"]["mode"] == "merge"
 
     def test_patch_sets_api_type(self):
         """Custom provider gets the correct OpenClaw API type."""
-        result = _patch_openclaw_config(
-            {}, "gemini", "https://generativelanguage.googleapis.com", self.PROXY
-        )
+        result = _patch_openclaw_config({}, "gemini", self.PROXY)
         provider = result["models"]["providers"]["sentinellm-gemini"]
         assert provider["api"] == "google-generative-ai"
 
     def test_patch_sets_api_key_env_ref(self):
         """Custom provider includes apiKey as env var reference."""
-        result = _patch_openclaw_config({}, "openai", "https://api.openai.com", self.PROXY)
+        result = _patch_openclaw_config({}, "openai", self.PROXY)
         provider = result["models"]["providers"]["sentinellm-openai"]
         assert provider["apiKey"] == "${OPENAI_API_KEY}"  # pragma: allowlist secret
 
     def test_patch_ollama_uses_dummy_key(self):
         """Ollama (no auth) gets a dummy apiKey value."""
-        result = _patch_openclaw_config({}, "ollama", "http://localhost:11434", self.PROXY)
+        result = _patch_openclaw_config({}, "ollama", self.PROXY)
         provider = result["models"]["providers"]["sentinellm-ollama"]
-        assert provider["apiKey"] == "ollama-local"
+        assert provider["apiKey"] == "ollama-local"  # pragma: allowlist secret
 
     def test_patch_includes_default_model_in_list(self):
         """Custom provider has at least one model in its models list."""
-        result = _patch_openclaw_config(
-            {}, "gemini", "https://generativelanguage.googleapis.com", self.PROXY
-        )
+        result = _patch_openclaw_config({}, "gemini", self.PROXY)
         provider = result["models"]["providers"]["sentinellm-gemini"]
         assert isinstance(provider["models"], list)
         assert len(provider["models"]) >= 1
@@ -626,15 +614,13 @@ class TestPatchOpenclawConfig:
 
     def test_patch_sets_primary_model(self):
         """agents.defaults.model.primary is set to the custom provider model ref."""
-        result = _patch_openclaw_config(
-            {}, "gemini", "https://generativelanguage.googleapis.com", self.PROXY
-        )
+        result = _patch_openclaw_config({}, "gemini", self.PROXY)
         primary = result["agents"]["defaults"]["model"]["primary"]
         assert primary == "sentinellm-gemini/gemini-2.5-flash"
 
     def test_patch_adds_model_to_allowlist(self):
         """Model ref is added to agents.defaults.models allowlist with alias."""
-        result = _patch_openclaw_config({}, "openai", "https://api.openai.com", self.PROXY)
+        result = _patch_openclaw_config({}, "openai", self.PROXY)
         allowlist = result["agents"]["defaults"]["models"]
         assert "sentinellm-openai/gpt-4o" in allowlist
         assert "alias" in allowlist["sentinellm-openai/gpt-4o"]
@@ -645,9 +631,7 @@ class TestPatchOpenclawConfig:
             "gateway": {"port": 18789},
             "messages": {"ackReactionScope": "group-mentions"},
         }
-        result = _patch_openclaw_config(
-            config, "gemini", "https://generativelanguage.googleapis.com", self.PROXY
-        )
+        result = _patch_openclaw_config(config, "gemini", self.PROXY)
         assert result["gateway"]["port"] == 18789
         assert result["messages"]["ackReactionScope"] == "group-mentions"
 
@@ -666,9 +650,7 @@ class TestPatchOpenclawConfig:
                 }
             }
         }
-        result = _patch_openclaw_config(
-            config, "gemini", "https://generativelanguage.googleapis.com", self.PROXY
-        )
+        result = _patch_openclaw_config(config, "gemini", self.PROXY)
         models = result["models"]["providers"]["sentinellm-gemini"]["models"]
         model_ids = [m["id"] for m in models]
         # Both the existing custom model AND the default should be present
@@ -678,12 +660,8 @@ class TestPatchOpenclawConfig:
     def test_patch_idempotent_on_default_model(self):
         """Re-patching does not duplicate default model entry."""
         config = {}
-        result1 = _patch_openclaw_config(
-            config, "gemini", "https://generativelanguage.googleapis.com", self.PROXY
-        )
-        result2 = _patch_openclaw_config(
-            result1, "gemini", "https://generativelanguage.googleapis.com", self.PROXY
-        )
+        result1 = _patch_openclaw_config(config, "gemini", self.PROXY)
+        result2 = _patch_openclaw_config(result1, "gemini", self.PROXY)
         models = result2["models"]["providers"]["sentinellm-gemini"]["models"]
         ids = [m["id"] for m in models]
         assert ids.count("gemini-2.5-flash") == 1  # no duplicate
@@ -692,7 +670,7 @@ class TestPatchOpenclawConfig:
         """All providers in PROVIDER_DEFAULT_MODELS can be patched without error."""
         for provider_id, info in PROVIDER_DEFAULT_MODELS.items():
             config = {}
-            result = _patch_openclaw_config(config, provider_id, "https://example.com", self.PROXY)
+            result = _patch_openclaw_config(config, provider_id, self.PROXY)
             custom = f"sentinellm-{provider_id}"
             assert custom in result["models"]["providers"]
             assert result["models"]["providers"][custom]["baseUrl"] == self.PROXY
@@ -701,7 +679,7 @@ class TestPatchOpenclawConfig:
 
     def test_patch_unknown_provider_uses_default_api(self):
         """Unknown provider falls back to openai-completions api type."""
-        result = _patch_openclaw_config({}, "my-llm", "https://custom.example.com", self.PROXY)
+        result = _patch_openclaw_config({}, "my-llm", self.PROXY)
         provider = result["models"]["providers"]["sentinellm-my-llm"]
         assert provider["api"] == "openai-completions"
         assert provider["baseUrl"] == self.PROXY
@@ -711,7 +689,6 @@ class TestPatchOpenclawConfig:
         result = _patch_openclaw_config(
             {},
             "gemini",
-            "https://generativelanguage.googleapis.com",
             self.PROXY,
             model_id="gemini-2.5-flash",
             model_name="Gemini 2.5 Flash (via SentineLLM)",
@@ -726,7 +703,6 @@ class TestPatchOpenclawConfig:
         result = _patch_openclaw_config(
             {},
             "openai",
-            "https://api.openai.com",
             self.PROXY,
             model_id="gpt-4.1-mini",
         )
@@ -742,7 +718,6 @@ class TestPatchOpenclawConfig:
         _patch_openclaw_config(
             {},
             "gemini",
-            "https://generativelanguage.googleapis.com",
             self.PROXY,
             model_id="gemini-custom-xyz",
         )
@@ -982,7 +957,7 @@ class TestDetectInstalledAgents:
 class TestConfigureAgentInteractive:
     """Tests for configure_agent_interactive."""
 
-    def test_no_questionary(self, capsys):
+    def test_no_questionary(self):
         """Prints error when questionary not available."""
         from src.cli.agent_config import configure_agent_interactive
 

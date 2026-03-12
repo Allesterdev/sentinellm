@@ -156,6 +156,10 @@ def main():
             from src.cli.agent_config import configure_agent_interactive
 
             configure_agent_interactive()
+        elif command == "uninstall":
+            from src.cli.agent_config import uninstall_agent_interactive
+
+            uninstall_agent_interactive()
         elif command == "check-ollama":
             status = check_ollama_installation()
             print(f"\n📊 {t('status_title')}")
@@ -255,6 +259,7 @@ def main():
                 questionary.Choice(t("config_option"), value="config"),
                 questionary.Separator(" ── Uso diario ─────────────────────────── "),
                 questionary.Choice(t("agent_option"), value="agent"),
+                questionary.Choice("🗑️  Uninstall / Restore agent config", value="uninstall"),
                 questionary.Choice(t("proxy_option"), value="proxy"),
                 questionary.Choice(t("api_option"), value="api"),
                 questionary.Separator(" ── Otras opciones ─────────────────────── "),
@@ -269,6 +274,10 @@ def main():
             from src.cli.agent_config import configure_agent_interactive
 
             configure_agent_interactive()
+        elif choice == "uninstall":
+            from src.cli.agent_config import uninstall_agent_interactive
+
+            uninstall_agent_interactive()
         elif choice == "api":
             print(t("starting_api"))
             print(t("api_url"))
@@ -317,6 +326,7 @@ def print_help():
     print("    sllm proxy https://custom  # Proxy to custom URL")
     print("")
     print("  agent            - Auto-configure AI agent (OpenClaw, etc.)")
+    print("  uninstall        - Remove SentineLLM from agent config / restore backup")
     print("  api              - Start validation API server")
     print(f"  {t('help_setup')}")
     print(f"  {t('help_config')}")

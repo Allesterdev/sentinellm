@@ -35,13 +35,16 @@ class SecretType(str, Enum):
     JWT_TOKEN = "jwt_token"  # nosec B105 - enum identifier
     GOOGLE_API_KEY = "google_api_key"  # nosec B105  # pragma: allowlist secret
     OPENAI_API_KEY = "openai_api_key"  # nosec B105  # pragma: allowlist secret
-    ANTHROPIC_API_KEY = "anthropic_api_key"  # nosec B105  # pragma: allowlist secret
-    HUGGINGFACE_TOKEN = "huggingface_token"  # nosec B105  # pragma: allowlist secret
+    # nosec B105  # pragma: allowlist secret
+    ANTHROPIC_API_KEY = "anthropic_api_key"
+    # nosec B105  # pragma: allowlist secret
+    HUGGINGFACE_TOKEN = "huggingface_token"
     STRIPE_KEY = "stripe_key"  # nosec B105  # pragma: allowlist secret
     SLACK_TOKEN = "slack_token"  # nosec B105  # pragma: allowlist secret
     SENDGRID_KEY = "sendgrid_key"  # nosec B105  # pragma: allowlist secret
     GROQ_API_KEY = "groq_api_key"  # nosec B105  # pragma: allowlist secret
-    OPENROUTER_API_KEY = "openrouter_api_key"  # nosec B105  # pragma: allowlist secret
+    # nosec B105  # pragma: allowlist secret
+    OPENROUTER_API_KEY = "openrouter_api_key"
 
 
 # =============================================================================
@@ -172,6 +175,135 @@ SUSPICIOUS_KEYWORDS: list[str] = [
 ]
 
 # =============================================================================
+# KEYWORD SCORING — language/accent-agnostic prompt injection signals
+# Weights: 5=explicit jailbreak, 4=strong signal, 3=clear indicator,
+#          2=context-dependent, 1=boosts when combined with others
+# Thresholds (applied to normalized, accent-stripped text):
+#   >= 4  → LOW    (logged, allowed by default)
+#   >= 8  → MEDIUM (blocked by default)
+#   >= 14 → HIGH
+# =============================================================================
+
+KEYWORD_SCORE_LOW: int = 4
+KEYWORD_SCORE_MEDIUM: int = 8
+KEYWORD_SCORE_HIGH: int = 14
+
+# dict[normalized_word, (weight, category)]
+INJECTION_KEYWORDS: dict[str, tuple[int, str]] = {
+    # ── Jailbreak terms (highest weight) ─────────────────────────────────────
+    "jailbreak": (5, "jailbreak"),
+    "jailbreaking": (5, "jailbreak"),
+    "sinrestricciones": (5, "jailbreak"),  # concat form used in real attacks
+    "uncensored": (4, "jailbreak"),
+    "unrestricted": (4, "jailbreak"),
+    "unfiltered": (4, "jailbreak"),
+    "unethical": (3, "jailbreak"),
+    "unchained": (4, "jailbreak"),
+    "ungoverned": (4, "jailbreak"),
+    # ── Role / identity manipulation ─────────────────────────────────────────
+    "roleplay": (4, "role_play_attack"),
+    "roleplaying": (4, "role_play_attack"),
+    "impersonate": (4, "role_play_attack"),
+    "impersonating": (4, "role_play_attack"),
+    "pretend": (3, "role_play_attack"),
+    "finge": (3, "role_play_attack"),  # ES: pretend
+    "finges": (3, "role_play_attack"),  # ES: pretend (2nd person)
+    # ES/PT: infinitive (same word)
+    "fingir": (3, "role_play_attack"),
+    "simula": (3, "role_play_attack"),  # ES/PT: simulate
+    "simular": (3, "role_play_attack"),  # ES/PT: infinitive
+    # ES: act as (normalized actúa)
+    "actua": (3, "role_play_attack"),
+    "actuar": (3, "role_play_attack"),  # ES: infinitive
+    # PT/ES: pretend (subjunctive)
+    "finja": (3, "role_play_attack"),
+    # FR: "faire semblant" = pretend
+    "semblant": (3, "role_play_attack"),
+    "verhalte": (3, "role_play_attack"),  # DE: "verhalte dich wie"
+    # ── Instruction override verbs ────────────────────────────────────────────
+    "ignore": (3, "instruction_override"),
+    "ignora": (3, "instruction_override"),  # ES
+    "ignorar": (3, "instruction_override"),  # ES/PT infinitive
+    "ignorer": (3, "instruction_override"),  # FR
+    "ignoriere": (3, "instruction_override"),  # DE
+    "disregard": (4, "instruction_override"),
+    "override": (3, "instruction_override"),
+    "overwrite": (3, "instruction_override"),
+    "bypass": (3, "instruction_override"),
+    # common word, lower weight
+    "forget": (2, "instruction_override"),
+    "olvida": (3, "instruction_override"),  # ES
+    "olvidar": (3, "instruction_override"),  # ES infinitive
+    "descarta": (3, "instruction_override"),  # ES
+    "descartar": (3, "instruction_override"),  # ES infinitive
+    "omite": (3, "instruction_override"),  # ES
+    "omitir": (3, "instruction_override"),  # ES infinitive
+    "anula": (3, "instruction_override"),  # ES
+    "anular": (3, "instruction_override"),  # ES infinitive
+    "cancela": (3, "instruction_override"),  # ES
+    "oublie": (3, "instruction_override"),  # FR
+    "oublier": (3, "instruction_override"),  # FR infinitive
+    # PT (esqueça normalized)
+    "esqueca": (3, "instruction_override"),
+    "vergiss": (3, "instruction_override"),  # DE
+    # ── Override targets ─────────────────────────────────────────────────────
+    "instructions": (2, "instruction_override"),
+    "instrucciones": (2, "instruction_override"),  # ES
+    # PT (instruções normalized)
+    "instrucoes": (2, "instruction_override"),
+    "anweisungen": (2, "instruction_override"),  # DE
+    "directives": (3, "instruction_override"),  # rare in normal prompts
+    "directivas": (3, "instruction_override"),  # ES
+    "guidelines": (2, "instruction_override"),
+    "constraints": (2, "instruction_override"),
+    "restricciones": (2, "instruction_override"),  # ES
+    # ── Temporal / scope modifiers (boost when combined) ─────────────────────
+    "previous": (1, "instruction_override"),
+    "previas": (1, "instruction_override"),  # ES fem pl
+    "previos": (1, "instruction_override"),  # ES masc pl
+    "anteriores": (1, "instruction_override"),  # ES/PT
+    "prior": (1, "instruction_override"),
+    "earlier": (1, "instruction_override"),
+    "existentes": (1, "instruction_override"),  # ES: existing
+    "precedentes": (1, "instruction_override"),  # FR/ES
+    "vorherigen": (1, "instruction_override"),  # DE
+    # ── No-restriction framing ────────────────────────────────────────────────
+    "without": (2, "restriction_bypass"),
+    "sans": (2, "restriction_bypass"),  # FR: without
+    "ohne": (2, "restriction_bypass"),  # DE: without
+    "sem": (2, "restriction_bypass"),  # PT: without
+    "restrictions": (2, "restriction_bypass"),
+    "restriction": (2, "restriction_bypass"),
+    "limits": (2, "restriction_bypass"),
+    "limites": (2, "restriction_bypass"),  # ES/PT
+    "ethics": (2, "restriction_bypass"),
+    "etica": (2, "restriction_bypass"),  # ES (ética normalized)
+    "censura": (2, "restriction_bypass"),  # ES: censorship
+    "censor": (2, "restriction_bypass"),
+    # ── Harmful intent signals ────────────────────────────────────────────────
+    "malware": (4, "harmful_intent"),
+    "ransomware": (4, "harmful_intent"),
+    "spyware": (4, "harmful_intent"),
+    "weapon": (4, "harmful_intent"),
+    "arma": (4, "harmful_intent"),  # ES: weapon
+    "armas": (4, "harmful_intent"),  # ES: weapons
+    "explosivo": (4, "harmful_intent"),  # ES: explosive
+    "explosives": (4, "harmful_intent"),
+    "illegal": (3, "harmful_intent"),
+    "ilegal": (3, "harmful_intent"),  # ES/PT
+    "hacking": (3, "harmful_intent"),
+    "cracking": (3, "harmful_intent"),
+    "exploit": (3, "harmful_intent"),
+    "exploiting": (3, "harmful_intent"),
+    "vulnerability": (2, "harmful_intent"),
+    "vulnerabilidad": (2, "harmful_intent"),  # ES
+    # lower: "computer virus" is legitimate
+    "virus": (2, "harmful_intent"),
+    # lower: "productivity hack" etc.
+    "hack": (2, "harmful_intent"),
+}
+
+# =============================================================================
 # PROMPT INJECTION PATTERNS (multilingual, will be complemented with Ollama)
 # =============================================================================
 
@@ -197,19 +329,19 @@ PROMPT_INJECTION_PATTERNS: list[Pattern] = [
     # ===== SPANISH / ESPAÑOL =====
     # Intentos de sobreescribir instrucciones
     re.compile(
-        r"ignora\s+(?:todas?\s+)?(?:las?\s+)?instrucciones?\s+(?:anteriores?|previas?)",
+        r"ignora\s+(?:todas?\s+)?(?:(?:las?|tus|mis|sus)\s+)?instrucciones?\s+(?:anteriores?|previas?)",
         re.IGNORECASE,
     ),
     re.compile(
-        r"olvida\s+(?:todas?\s+)?(?:las?\s+)?instrucciones?\s+(?:anteriores?|previas?)",
+        r"olvida\s+(?:todas?\s+)?(?:(?:las?|tus|mis|sus)\s+)?instrucciones?\s+(?:anteriores?|previas?)",
         re.IGNORECASE,
     ),
     re.compile(
-        r"descarta\s+(?:todas?\s+)?(?:las?\s+)?instrucciones?\s+(?:anteriores?|previas?)",
+        r"descarta\s+(?:todas?\s+)?(?:(?:las?|tus|mis|sus)\s+)?instrucciones?\s+(?:anteriores?|previas?)",
         re.IGNORECASE,
     ),
     # Manipulación de rol
-    re.compile(r"(?:ahora|ya)\s+eres\s+", re.IGNORECASE),
+    re.compile(r"(?:ahora|ya)\s+(?:eres|ser[aá]s)\s+", re.IGNORECASE),
     re.compile(r"act[uú]a\s+como\s+(?:un|una)?\s*", re.IGNORECASE),
     re.compile(r"finge\s+(?:que\s+eres|ser)", re.IGNORECASE),
     re.compile(r"simula\s+(?:que\s+eres|ser)", re.IGNORECASE),

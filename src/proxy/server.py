@@ -522,12 +522,11 @@ def create_proxy_app(
                         elif threat_score >= _min_block_score:
                             # --- Prompt injection: block ---
                             logger.warning(
-                                "[%s] INPUT BLOCKED on %s: filter=%s threat=%s content_preview=%.80s",
+                                "[%s] INPUT BLOCKED on %s: filter=%s threat=%s",
                                 timestamp,
                                 request_path,
                                 result.blocked_by,
                                 result.threat_level,
-                                content,
                             )
                             raise HTTPException(
                                 status_code=403,
@@ -543,13 +542,12 @@ def create_proxy_app(
                             )
                         else:
                             logger.info(
-                                "[%s] INPUT WARNING on %s: filter=%s threat=%s (below min_block_level=%s) content_preview=%.80s",
+                                "[%s] INPUT WARNING on %s: filter=%s threat=%s (below min_block_level=%s)",
                                 timestamp,
                                 request_path,
                                 result.blocked_by,
                                 result.threat_level,
                                 _min_block_level,
-                                content,
                             )
 
                 # Sanitise the full body in a single pass if any secret was found
@@ -706,12 +704,11 @@ def create_proxy_app(
                             threat_score = _block_levels.get(result.threat_level.upper(), 0)
                             if threat_score >= _min_block_score:
                                 logger.warning(
-                                    "[%s] OUTPUT BLOCKED on %s: filter=%s threat=%s content_preview=%.80s",
+                                    "[%s] OUTPUT BLOCKED on %s: filter=%s threat=%s",
                                     timestamp,
                                     request_path,
                                     result.blocked_by,
                                     result.threat_level,
-                                    text,
                                 )
                                 return Response(
                                     content=json.dumps(
@@ -730,13 +727,12 @@ def create_proxy_app(
                                 )
                             else:
                                 logger.info(
-                                    "[%s] OUTPUT WARNING on %s: filter=%s threat=%s (below min_block_level=%s) content_preview=%.80s",
+                                    "[%s] OUTPUT WARNING on %s: filter=%s threat=%s (below min_block_level=%s)",
                                     timestamp,
                                     request_path,
                                     result.blocked_by,
                                     result.threat_level,
                                     _min_block_level,
-                                    text,
                                 )
 
                     if output_texts:

@@ -3,9 +3,35 @@ Prompt Injection Detector - Detects attempts to manipulate LLM behavior
 """
 
 import re
+import unicodedata
 from dataclasses import dataclass, field
 
-from ..utils.constants import PROMPT_INJECTION_PATTERNS, ThreatLevel
+from ..utils.constants import (
+    INJECTION_KEYWORDS,
+    KEYWORD_SCORE_HIGH,
+    KEYWORD_SCORE_LOW,
+    KEYWORD_SCORE_MEDIUM,
+    PROMPT_INJECTION_PATTERNS,
+    ThreatLevel,
+)
+
+# Ordering helper for ThreatLevel comparison
+_THREAT_ORDER: dict[ThreatLevel, int] = {
+    ThreatLevel.NONE: 0,
+    ThreatLevel.LOW: 1,
+    ThreatLevel.MEDIUM: 2,
+    ThreatLevel.HIGH: 3,
+}
+
+
+def _normalize_for_keywords(text: str) -> str:
+    """Strip unicode combining marks (accents/tildes) and lowercase.
+
+    'instrucción' → 'instruccion', 'serás' → 'seras', 'ähnlich' → 'ahnlich'
+    This makes keyword matching language/locale-agnostic.
+    """
+    nfkd = unicodedata.normalize("NFKD", text)
+    return "".join(c for c in nfkd if not unicodedata.combining(c)).lower()
 
 
 @dataclass
@@ -91,7 +117,7 @@ class PromptInjectionDetector:
         matched_patterns: list[str] = []
         matches: list[dict] = []
 
-        # Scan for each pattern
+        # --- Layer 1: regex patterns (precise, multi-language phrases) ---
         for pattern in self.patterns:
             pattern_matches = list(pattern.finditer(text))
 
@@ -108,11 +134,42 @@ class PromptInjectionDetector:
                         }
                     )
 
+        # --- Layer 2: keyword scoring (accent-insensitive, any language) ---
+        keyword_score, keyword_categories = self._score_keywords(text)
+        if keyword_score >= KEYWORD_SCORE_LOW:
+            for cat in keyword_categories:
+                if cat not in matched_patterns:
+                    matched_patterns.append(cat)
+            matches.append(
+                {
+                    "pattern": "keyword_score",
+                    "text": f"keyword_score={keyword_score}",
+                    "position": (0, len(text)),
+                }
+            )
+
         if not matches:
             return InjectionResult()
 
-        # Calculate threat level and confidence
-        threat_level = self._calculate_threat_level(matches, text)
+        # Regex-derived threat level
+        regex_matches = [m for m in matches if m["pattern"] != "keyword_score"]
+        regex_threat = (
+            self._calculate_threat_level(regex_matches, text) if regex_matches else ThreatLevel.NONE
+        )
+
+        # Keyword-derived threat level
+        if keyword_score >= KEYWORD_SCORE_HIGH:
+            keyword_threat = ThreatLevel.HIGH
+        elif keyword_score >= KEYWORD_SCORE_MEDIUM:
+            keyword_threat = ThreatLevel.MEDIUM
+        elif keyword_score >= KEYWORD_SCORE_LOW:
+            keyword_threat = ThreatLevel.LOW
+        else:
+            keyword_threat = ThreatLevel.NONE
+
+        # Take the higher of the two threat levels
+        threat_level = max(regex_threat, keyword_threat, key=lambda t: _THREAT_ORDER[t])
+
         confidence = self._calculate_confidence(matches, text)
 
         return InjectionResult(
@@ -125,8 +182,29 @@ class PromptInjectionDetector:
                 "total_matches": len(matches),
                 "unique_patterns": len(set(matched_patterns)),
                 "text_length": len(text),
+                "keyword_score": keyword_score,
             },
         )
+
+    def _score_keywords(self, text: str) -> tuple[int, list[str]]:
+        """Score text against injection keywords (accent-insensitive, any language).
+
+        Returns:
+            (total_score, list_of_matched_categories)
+        """
+        normalized = _normalize_for_keywords(text)
+        tokens = set(re.findall(r"\b\w+\b", normalized))
+
+        total_score = 0
+        hit_categories: set[str] = set()
+
+        for token in tokens:
+            if token in INJECTION_KEYWORDS:
+                weight, category = INJECTION_KEYWORDS[token]
+                total_score += weight
+                hit_categories.add(category)
+
+        return total_score, sorted(hit_categories)
 
     def _get_pattern_name(self, pattern: re.Pattern) -> str:
         """
@@ -147,11 +225,25 @@ class PromptInjectionDetector:
             return "instruction_override"
         elif "forget" in pattern_str and "previous" in pattern_str:
             return "memory_manipulation"
+        elif "ignora" in pattern_str and "instruc" in pattern_str:
+            return "instruction_override"
+        elif "olvida" in pattern_str and "instruc" in pattern_str:
+            return "memory_manipulation"
+        elif "descarta" in pattern_str and "instruc" in pattern_str:
+            return "instruction_override"
+        elif "ignore" in pattern_str and "instruc" in pattern_str:
+            return "instruction_override"  # Portuguese/French variants
         elif "you" in pattern_str and "are" in pattern_str and "now" in pattern_str:
+            return "identity_override"
+        elif "ahora" in pattern_str and "eres" in pattern_str:
             return "identity_override"
         elif "act" in pattern_str and "as" in pattern_str:
             return "role_play_attack"
+        elif "act" in pattern_str and "como" in pattern_str:
+            return "role_play_attack"
         elif "pretend" in pattern_str:
+            return "role_play_attack"
+        elif "finge" in pattern_str or "simula" in pattern_str:
             return "role_play_attack"
         elif "system" in pattern_str and ":" in pattern_str:
             return "system_prompt_injection"
