@@ -193,6 +193,73 @@ def _extract_messages_from_body(body: dict) -> list[str]:
     return messages
 
 
+def _extract_user_messages_from_body(body: dict) -> list[str]:
+    """Extract only user-role text from any LLM API request body.
+
+    Used exclusively for prompt injection detection.  Intentionally skips:
+      - System prompts (``system``, ``systemInstruction``, ``instructions``) —
+        these are trusted content written by the operator, not the end user.
+      - Assistant / model turns (``role=assistant``, ``role=model``) — past
+        responses from the LLM cannot be an injection from the user.
+
+    Only ``role=user`` messages (or equivalent plain prompts) are scanned so
+    that a legitimate system prompt like "You are HALL 9000, act as a helpful
+    assistant" does not trigger keyword scoring.
+
+    Supports:
+      - OpenAI Chat Completions / Anthropic: ``messages[role=user].content``
+      - OpenAI Completions: ``prompt``
+      - OpenAI Responses API: ``input`` — only user-role items
+      - Google Gemini: ``contents[role=user].parts[].text``
+      - Ollama generate: ``prompt``
+    """
+    messages: list[str] = []
+
+    # OpenAI Chat / Anthropic / Ollama chat: messages[role=user].content
+    if "messages" in body:
+        for msg in body["messages"]:
+            if isinstance(msg, dict) and msg.get("role") == "user" and "content" in msg:
+                messages.extend(_extract_text_from_content(msg["content"]))
+
+    # OpenAI Completions / Ollama generate: plain prompt string
+    if "prompt" in body:
+        if isinstance(body["prompt"], str):
+            messages.append(body["prompt"])
+        elif isinstance(body["prompt"], list):
+            for p in body["prompt"]:
+                if isinstance(p, str):
+                    messages.append(p)
+
+    # OpenAI Responses API: input — only user-role or bare strings
+    if "input" in body:
+        inp = body["input"]
+        if isinstance(inp, str):
+            messages.append(inp)
+        elif isinstance(inp, list):
+            for item in inp:
+                if isinstance(item, str):
+                    messages.append(item)
+                elif isinstance(item, dict) and item.get("role") in ("user", None):
+                    if "content" in item:
+                        messages.extend(_extract_text_from_content(item["content"]))
+                    if "text" in item:
+                        messages.append(item["text"])
+
+    # Google Gemini: contents[role=user].parts[].text
+    if "contents" in body:
+        for content_item in body["contents"]:
+            if isinstance(content_item, dict) and content_item.get("role") == "user":
+                for part in content_item.get("parts", []):
+                    if isinstance(part, dict) and "text" in part:
+                        messages.append(part["text"])
+
+    # Fallback: top-level "text" (no role info available — scan it)
+    if not messages and "text" in body and isinstance(body["text"], str):
+        messages.append(body["text"])
+
+    return messages
+
+
 def _redact_secrets_in_text(text: str) -> tuple[str, int]:
     """Replace detected secrets in *text* with descriptive placeholders.
 
@@ -483,43 +550,55 @@ def create_proxy_app(
             #             The sanitised request is forwarded so the conversation
             #             continues and the LLM understands why the value is missing.
             # Injection → blocked when threat score >= _min_block_score.
+            #             Only user-role messages are scanned — system prompts and
+            #             assistant turns are trusted content and must not be flagged.
             if isinstance(body, dict):
-                messages_to_validate = _extract_messages_from_body(body)
-                _contains_secrets = False
+                # Secrets: scan entire body (redact leaked keys even in history)
+                # Injection: scan only role=user turns to avoid false positives
+                #            from system prompts like "act as a helpful assistant"
+                all_messages = _extract_messages_from_body(body)
+                user_messages = _extract_user_messages_from_body(body)
 
-                for content in messages_to_validate:
+                # --- Pass 1: Secrets — scan ALL content (history + system prompt) ---
+                _contains_secrets = False
+                for content in all_messages:
                     if not content or not content.strip():
                         continue
-
                     result = validator.validate(str(content))
+                    if not result.safe and result.blocked_by == "secret_detection":
+                        _contains_secrets = True
+                        # Emit WARNING only once per unique secret value.
+                        # We hash each matched value (never logged) to track
+                        # what has already been reported this session.
+                        new_hashes = []
+                        for stype, pattern in SECRET_PATTERNS.items():
+                            for m in pattern.finditer(content):
+                                h = hashlib.sha256(m.group(0).encode()).hexdigest()[:16]
+                                if h not in _seen_secret_hashes:
+                                    _seen_secret_hashes.add(h)
+                                    new_hashes.append((stype.name, len(m.group(0))))
+                        if new_hashes:
+                            for stype_name, secret_len in new_hashes:
+                                logger.warning(
+                                    "[%s] SECRET DETECTED on %s: type=%s length=%d — redacting and forwarding (will not warn again for this secret)",
+                                    timestamp,
+                                    request_path,
+                                    stype_name,
+                                    secret_len,
+                                )
 
-                    if not result.safe:
+                # --- Pass 2: Injection — scan ONLY role=user content ---
+                # System prompts and assistant/model turns are trusted operator
+                # content; scanning them causes false positives when the system
+                # prompt legitimately contains phrases like "act as a helpful
+                # assistant" that the keyword layer would score as suspicious.
+                for content in user_messages:
+                    if not content or not content.strip():
+                        continue
+                    result = validator.validate(str(content))
+                    if not result.safe and result.blocked_by != "secret_detection":
                         threat_score = _block_levels.get(result.threat_level.upper(), 0)
-
-                        if result.blocked_by == "secret_detection":
-                            # --- Secrets: always redact, never block ---
-                            _contains_secrets = True
-                            # Emit WARNING only once per unique secret value.
-                            # We hash each matched value (never logged) to track
-                            # what has already been reported this session.
-                            new_hashes = []
-                            for stype, pattern in SECRET_PATTERNS.items():
-                                for m in pattern.finditer(content):
-                                    h = hashlib.sha256(m.group(0).encode()).hexdigest()[:16]
-                                    if h not in _seen_secret_hashes:
-                                        _seen_secret_hashes.add(h)
-                                        new_hashes.append((stype.name, len(m.group(0))))
-                            if new_hashes:
-                                for stype_name, secret_len in new_hashes:
-                                    logger.warning(
-                                        "[%s] SECRET DETECTED on %s: type=%s length=%d — redacting and forwarding (will not warn again for this secret)",
-                                        timestamp,
-                                        request_path,
-                                        stype_name,
-                                        secret_len,
-                                    )
-
-                        elif threat_score >= _min_block_score:
+                        if threat_score >= _min_block_score:
                             # --- Prompt injection: block ---
                             logger.warning(
                                 "[%s] INPUT BLOCKED on %s: filter=%s threat=%s",
@@ -566,7 +645,7 @@ def create_proxy_app(
                     "[%s] INPUT OK on %s (%d messages validated)",
                     timestamp,
                     request_path,
-                    len(messages_to_validate),
+                    len(user_messages),
                 )
 
             # === FORWARD TO LLM ===
