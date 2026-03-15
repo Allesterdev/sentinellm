@@ -264,6 +264,7 @@ STRINGS = {
         # Main menu extra items
         "proxy_option": "🔒 Start Proxy Server (recommended)",
         "agent_option": "🤖 Configure AI Agent (OpenClaw, etc.)",
+        "uninstall_option": "🗑️  Uninstall / Restore agent config",
         "api_option": "🔌 Start API Server",
         # Proxy start messages
         "starting_proxy": "\n🔒 Starting SentineLLM Proxy Server...",
@@ -542,6 +543,7 @@ STRINGS = {
         # Main menu extra items
         "proxy_option": "🔒 Iniciar servidor proxy (recomendado)",
         "agent_option": "🤖 Configurar agente IA (OpenClaw, etc.)",
+        "uninstall_option": "🗑️  Desinstalar / Restaurar configuración del agente",
         "api_option": "🔌 Iniciar servidor API",
         # Proxy start messages
         "starting_proxy": "\n🔒 Iniciando servidor proxy SentineLLM...",

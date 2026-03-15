@@ -259,7 +259,7 @@ def main():
                 questionary.Choice(t("config_option"), value="config"),
                 questionary.Separator(" ── Uso diario ─────────────────────────── "),
                 questionary.Choice(t("agent_option"), value="agent"),
-                questionary.Choice("🗑️  Uninstall / Restore agent config", value="uninstall"),
+                questionary.Choice(t("uninstall_option"), value="uninstall"),
                 questionary.Choice(t("proxy_option"), value="proxy"),
                 questionary.Choice(t("api_option"), value="api"),
                 questionary.Separator(" ── Otras opciones ─────────────────────── "),
