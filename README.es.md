@@ -15,7 +15,9 @@
 
 > ⚠️ **MVP / Proof of Concept** — Las funcionalidades principales (proxy, redacción de secretos, detección de prompt injection) son funcionales y están testeadas. El análisis semántico con Ollama es experimental y está pendiente de validación completa. No recomendado para producción sin pruebas adicionales.
 >
-> 🧪 **Compatibilidad con proveedores** — Actualmente solo probado con **Google Gemini** (vía OpenClaw). El proxy está diseñado para ser compatible con OpenAI, Anthropic, Ollama y otros proveedores, pero no han sido verificados en la práctica debido al coste de las APIs. Se agradecen contribuciones y reportes de pruebas.
+> 🧪 **Compatibilidad con Proveedores** — Actualmente validado con **Google Gemini** (vía integración con OpenClaw). Aunque la arquitectura está diseñada para ser agnóstica al proveedor (compatible con OpenAI, Anthropic, Ollama, etc.), estos no han sido verificados oficialmente en la versión actual.
+>
+> ¡Se animan las contribuciones y reportes de pruebas para otros proveedores!
 
 ---
 
