@@ -14,6 +14,8 @@
 [![Status](https://img.shields.io/badge/Status-MVP%20%2F%20PoC-orange)](https://github.com/Allesterdev/sentinellm)
 
 > ⚠️ **MVP / Proof of Concept** — Core features (proxy, secret redaction, prompt injection detection) are functional and tested. Ollama semantic analysis is experimental and pending full validation. Not recommended for production use without additional testing.
+>
+> 🧪 **Provider compatibility** — Currently only tested with **Google Gemini** (via OpenClaw). The proxy is designed to be compatible with OpenAI, Anthropic, Ollama and other providers, but these have not been verified in practice due to API costs. Contributions and test reports welcome.
 
 ---
 
