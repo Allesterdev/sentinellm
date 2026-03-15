@@ -194,34 +194,41 @@ def _extract_messages_from_body(body: dict) -> list[str]:
 
 
 def _extract_user_messages_from_body(body: dict) -> list[str]:
-    """Extract only user-role text from any LLM API request body.
+    """Extract only the **current** user turn from any LLM API request body.
 
-    Used exclusively for prompt injection detection.  Intentionally skips:
+    Used exclusively for prompt injection detection.  Returns at most the
+    most-recent user message so that conversation history — which may contain
+    a previously blocked injection — does not cause every subsequent request
+    in the same multi-turn session to be blocked as well.
+
+    Intentionally skips:
       - System prompts (``system``, ``systemInstruction``, ``instructions``) —
-        these are trusted content written by the operator, not the end user.
-      - Assistant / model turns (``role=assistant``, ``role=model``) — past
-        responses from the LLM cannot be an injection from the user.
+        trusted content written by the operator, not the end user.
+      - Assistant / model turns (``role=assistant``, ``role=model``) — LLM
+        responses cannot be an injection from the user.
+      - **Historical** user turns — already inspected when they were sent;
+        re-scanning them would permanently block any conversation that ever
+        contained an injection attempt.
 
-    Only ``role=user`` messages (or equivalent plain prompts) are scanned so
-    that a legitimate system prompt like "You are HALL 9000, act as a helpful
-    assistant" does not trigger keyword scoring.
+    Only the **last** ``role=user`` message (or equivalent plain prompt) is
+    returned, matching exactly what the user typed in this request.
 
     Supports:
-      - OpenAI Chat Completions / Anthropic: ``messages[role=user].content``
-      - OpenAI Completions: ``prompt``
-      - OpenAI Responses API: ``input`` — only user-role items
-      - Google Gemini: ``contents[role=user].parts[].text``
-      - Ollama generate: ``prompt``
+      - OpenAI Chat Completions / Anthropic: last ``messages[role=user]``
+      - OpenAI Completions / Ollama generate: ``prompt``
+      - OpenAI Responses API: last user-role item in ``input``
+      - Google Gemini: last ``contents[role=user]``
     """
     messages: list[str] = []
 
-    # OpenAI Chat / Anthropic / Ollama chat: messages[role=user].content
+    # OpenAI Chat / Anthropic / Ollama chat — only the LAST role=user turn.
     if "messages" in body:
-        for msg in body["messages"]:
+        for msg in reversed(body["messages"]):
             if isinstance(msg, dict) and msg.get("role") == "user" and "content" in msg:
                 messages.extend(_extract_text_from_content(msg["content"]))
+                break  # stop after the most-recent user message
 
-    # OpenAI Completions / Ollama generate: plain prompt string
+    # OpenAI Completions / Ollama generate: plain prompt — always the current turn.
     if "prompt" in body:
         if isinstance(body["prompt"], str):
             messages.append(body["prompt"])
@@ -230,30 +237,33 @@ def _extract_user_messages_from_body(body: dict) -> list[str]:
                 if isinstance(p, str):
                     messages.append(p)
 
-    # OpenAI Responses API: input — only user-role or bare strings
+    # OpenAI Responses API: input — only the last user-role item.
     if "input" in body:
         inp = body["input"]
         if isinstance(inp, str):
             messages.append(inp)
         elif isinstance(inp, list):
-            for item in inp:
+            for item in reversed(inp):
                 if isinstance(item, str):
                     messages.append(item)
-                elif isinstance(item, dict) and item.get("role") in ("user", None):
+                    break
+                if isinstance(item, dict) and item.get("role") in ("user", None):
                     if "content" in item:
                         messages.extend(_extract_text_from_content(item["content"]))
                     if "text" in item:
                         messages.append(item["text"])
+                    break  # stop after the most-recent user item
 
-    # Google Gemini: contents[role=user].parts[].text
+    # Google Gemini: contents — only the LAST role=user item.
     if "contents" in body:
-        for content_item in body["contents"]:
+        for content_item in reversed(body["contents"]):
             if isinstance(content_item, dict) and content_item.get("role") == "user":
                 for part in content_item.get("parts", []):
                     if isinstance(part, dict) and "text" in part:
                         messages.append(part["text"])
+                break  # stop after the most-recent user turn
 
-    # Fallback: top-level "text" (no role info available — scan it)
+    # Fallback: top-level "text" (no role info available — scan it).
     if not messages and "text" in body and isinstance(body["text"], str):
         messages.append(body["text"])
 
