@@ -152,10 +152,11 @@ jobs:
           format: "sarif"
           output: "trivy-results.sarif"
           severity: "CRITICAL,HIGH,MEDIUM"
-          # Secret scanning disabled: covered by detect-secrets with audited
-          # baseline. Trivy secret scanner does not understand
-          # '# pragma: allowlist secret' and would flag demo strings in i18n.py.
-          scanners: "vuln,misconfig"
+          scanners: "vuln,misconfig,secret"
+          # trivy-secret.yaml declares allow-rules for the two fake demo tokens
+          # (ghp_1234...ABCD, ghp_abcd...) used in i18n.py, conftest.py, and
+          # examples/demo.py. Real credentials are still fully detected.
+          trivy-config: trivy.yaml
 
       - name: Upload Trivy results to GitHub Security
         uses: github/codeql-action/upload-sarif@v4
@@ -170,7 +171,8 @@ jobs:
           scan-ref: "."
           format: "table"
           severity: "CRITICAL,HIGH"
-          scanners: "vuln,misconfig"
+          scanners: "vuln,misconfig,secret"
+          trivy-config: trivy.yaml
 
   # ═══════════════════════════════════════════════════════════════════
   # Code Quality Checks

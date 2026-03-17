@@ -785,10 +785,17 @@ def _ensure_api_keys_configured(
 
         # Env var missing — ask the user
         preset_name = PROVIDER_PRESETS.get(pid, {}).get("name", pid)
+        # env_var is the NAME of an env var (e.g. "OPENAI_API_KEY"), not its
+        # value. CodeQL flags it as sensitive because the name implies a key.
+        # These prints show setup instructions to the user — not a credential leak.
+        # lgtm[py/clear-text-logging-sensitive-data]
         print(f"\n  ⚠️  Variable de entorno {env_var} no encontrada.")
-        print(f"     OpenClaw necesita esta clave para conectar con {preset_name}.")
+        print(  # lgtm[py/clear-text-logging-sensitive-data]
+            f"     OpenClaw necesita esta clave para conectar con {preset_name}."
+        )
 
         if questionary is None:
+            # lgtm[py/clear-text-logging-sensitive-data]
             print(f"     Por favor establece: export {env_var}=tu-clave")
             result[pid] = None
             continue
@@ -799,7 +806,9 @@ def _ensure_api_keys_configured(
         ).ask()
 
         if not api_key or not api_key.strip():
-            print(f"     ⏭️  Omitido. Recuerda establecer {env_var} antes de usar OpenClaw.")
+            print(  # lgtm[py/clear-text-logging-sensitive-data]
+                f"     ⏭️  Omitido. Recuerda establecer {env_var} antes de usar OpenClaw."
+            )
             result[pid] = None
             continue
 
@@ -810,8 +819,16 @@ def _ensure_api_keys_configured(
 
         # Append to ~/.sentinellm.env (so the proxy also picks it up)
         try:
+            # lgtm[py/clear-text-storage-of-sensitive-data]
             with open(env_path, "a", encoding="utf-8") as f:
+                # Writing in clear text is intentional: .env files are the
+                # standard mechanism for supplying API keys to local processes.
+                # The file is user-owned (~/.sentinellm.env) and not committed
+                # to version control.  Encrypting here would be pointless
+                # because the consumer (the proxy) must read the plain value.
+                # lgtm[py/clear-text-storage-of-sensitive-data]
                 f.write(f"\n# {preset_name} API key (added by sllm agent)\n")
+                # lgtm[py/clear-text-storage-of-sensitive-data]
                 f.write(f"{env_var}={api_key}\n")
             print(f"     ✅ Guardada en {env_path}")
         except OSError:

@@ -12,6 +12,7 @@ from src.proxy.server import (
     _extract_text_from_response,
     _extract_user_messages_from_body,
     _normalize_path,
+    _sanitize_forward_path,
     create_proxy_app,
 )
 
@@ -50,6 +51,52 @@ class TestNormalizePath:
     def test_gemini_path_unchanged(self):
         path = "/v1beta/models/gemini-1.5-flash:generateContent"
         assert _normalize_path(path) == path
+
+
+# ── Tests for _sanitize_forward_path ─────────────────────────────────────────
+
+
+class TestSanitizeForwardPath:
+    """_sanitize_forward_path combines normalization with a character allowlist."""
+
+    def test_valid_openai_path(self):
+        assert _sanitize_forward_path("/v1/chat/completions") == "/v1/chat/completions"
+
+    def test_valid_gemini_path_with_colon(self):
+        path = "/v1beta/models/gemini-2.0-flash:generateContent"
+        assert _sanitize_forward_path(path) == path
+
+    def test_valid_ollama_path(self):
+        assert _sanitize_forward_path("/api/generate") == "/api/generate"
+
+    def test_dot_dot_collapsed_then_validated(self):
+        """Traversal is collapsed; resulting /etc/passwd is still safe chars."""
+        result = _sanitize_forward_path("/v1/../../etc/passwd")
+        assert result == "/etc/passwd"
+
+    def test_invalid_chars_raise_400(self):
+        """Null byte and other out-of-allowlist chars must raise 400."""
+        import pytest
+        from fastapi import HTTPException
+
+        with pytest.raises(HTTPException) as exc_info:
+            _sanitize_forward_path("/v1/bad\x00path")
+        assert exc_info.value.status_code == 400
+
+    def test_space_raises_400(self):
+        import pytest
+        from fastapi import HTTPException
+
+        with pytest.raises(HTTPException):
+            _sanitize_forward_path("/v1/bad path")
+
+    def test_query_string_in_path_raises_400(self):
+        """Query strings contain '?' which is outside the allowlist."""
+        import pytest
+        from fastapi import HTTPException
+
+        with pytest.raises(HTTPException):
+            _sanitize_forward_path("/v1/models?injected=1")
 
 
 # ── Tests for _extract_text_from_content ────────────────────────────────

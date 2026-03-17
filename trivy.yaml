@@ -1,0 +1,7 @@
+# Trivy main configuration
+# https://aquasecurity.github.io/trivy/latest/docs/references/configuration/config-file/
+
+secret:
+  # Custom allow-list for known false-positive demo/test tokens.
+  # See trivy-secret.yaml for details.
+  config: trivy-secret.yaml
