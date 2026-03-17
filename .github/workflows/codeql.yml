@@ -20,8 +20,7 @@ jobs:
     name: CodeQL Analysis
     runs-on: ubuntu-latest
     timeout-minutes: 360
-    # Skip if repo is private without Advanced Security
-    continue-on-error: true
+    # Public repo: CodeQL Advanced Security is free — no continue-on-error needed
 
     strategy:
       fail-fast: false
@@ -76,7 +75,6 @@ jobs:
       # Perform CodeQL Analysis
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@v4
-        continue-on-error: true
         with:
           category: "/language:${{ matrix.language }}"
           upload: true
@@ -91,7 +89,7 @@ jobs:
           if [ -f "sarif-results/${{ matrix.language }}.sarif" ]; then
             CRITICAL_COUNT=$(jq '[.runs[].results[] | select(.level == "error")] | length' sarif-results/${{ matrix.language }}.sarif 2>/dev/null || echo "0")
             echo "Critical issues found: $CRITICAL_COUNT"
-            
+
             if [ "$CRITICAL_COUNT" -gt 0 ]; then
               echo "⚠️  Critical security issues detected!"
               echo "Review the workflow artifacts for details."
