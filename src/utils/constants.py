@@ -61,7 +61,8 @@ AWS_SECRET_KEY_PATTERN: Pattern = re.compile(
 )
 
 # GitHub Tokens
-GITHUB_TOKEN_PATTERN: Pattern = re.compile(r"(?i)gh[p|o|u|s|r]_[a-zA-Z0-9]{36,255}")
+# Character class [pousr] — no pipes; inside [] the | is a literal char, not alternation.
+GITHUB_TOKEN_PATTERN: Pattern = re.compile(r"(?i)gh[pousr]_[a-zA-Z0-9]{36,255}")
 
 # Bearer Tokens
 BEARER_TOKEN_PATTERN: Pattern = re.compile(r"(?i)bearer\s+([a-zA-Z0-9\-._~+/]+=*)")

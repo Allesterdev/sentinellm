@@ -815,6 +815,9 @@ def _ensure_api_keys_configured(
                 f.write(f"{env_var}={api_key}\n")
             print(f"     ✅ Guardada en {env_path}")
         except OSError:
+            # Writing to ~/.sentinellm.env is best-effort; if it fails (e.g.
+            # read-only filesystem) the key is still returned and written
+            # directly into the agent config file — non-fatal, skip silently.
             pass
 
         # Return literal value so it's written directly in openclaw.json

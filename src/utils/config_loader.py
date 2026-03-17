@@ -76,6 +76,7 @@ def _detect_ollama_model() -> str | None:
                 if parts:
                     return parts[0]
     except (FileNotFoundError, subprocess.TimeoutExpired):
+        # Ollama is not installed or not reachable — return None to caller.
         pass
     return None
 

@@ -20,6 +20,7 @@ import hashlib
 import json
 import logging
 import os
+import posixpath
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import parse_qs
@@ -83,6 +84,19 @@ def _load_env_file() -> None:
         logger.info(f"Loaded environment from {env_path}")
     except Exception as e:
         logger.warning(f"Failed to load {env_path}: {e}")
+
+
+def _normalize_path(path: str) -> str:
+    """Normalize a user-supplied URL path to prevent path traversal (partial SSRF).
+
+    Uses ``posixpath.normpath`` to collapse ``..`` and ``.`` components so that
+    a crafted path like ``/v1/../../admin`` cannot escape the intended API root
+    on the target LLM server.  The result always starts with ``/``.
+    """
+    # Ensure a leading slash so normpath does not treat it as relative.
+    normalized = posixpath.normpath("/" + path.lstrip("/"))
+    # normpath may strip the trailing slash for root — keep it as "/".
+    return normalized if normalized.startswith("/") else "/" + normalized
 
 
 def _extract_text_from_content(content) -> list[str]:
@@ -514,7 +528,13 @@ def create_proxy_app(
 
     async def _validate_and_forward(request: Request) -> Response:
         """Core proxy logic: validate input → forward → validate output → return."""
-        request_path = request.url.path
+        # Normalize path to prevent path-traversal / partial-SSRF (CWE-918).
+        # Strip control characters (CR, LF, tab…) to prevent log injection
+        # (CWE-117 / CodeQL py/log-injection) — done once here so every
+        # subsequent logger call that references request_path is safe.
+        request_path = _normalize_path(request.url.path).translate(
+            str.maketrans("", "", "\r\n\t\x00\x08\x0b\x0c\x1b")
+        )
         query_params = str(request.url.query)
         timestamp = datetime.now(timezone.utc).isoformat()
 
@@ -570,13 +590,13 @@ def create_proxy_app(
                 user_messages = _extract_user_messages_from_body(body)
 
                 # --- Pass 1: Secrets — scan ALL content (history + system prompt) ---
-                _contains_secrets = False
+                _body_needs_redaction = False
                 for content in all_messages:
                     if not content or not content.strip():
                         continue
                     result = validator.validate(str(content))
                     if not result.safe and result.blocked_by == "secret_detection":
-                        _contains_secrets = True
+                        _body_needs_redaction = True
                         # Emit WARNING only once per unique secret value.
                         # We hash each matched value (never logged) to track
                         # what has already been reported this session.
@@ -588,13 +608,13 @@ def create_proxy_app(
                                     _seen_secret_hashes.add(h)
                                     new_hashes.append((stype.name, len(m.group(0))))
                         if new_hashes:
-                            for stype_name, secret_len in new_hashes:
+                            for token_type, matched_len in new_hashes:
                                 logger.warning(
-                                    "[%s] SECRET DETECTED on %s: type=%s length=%d — redacting and forwarding (will not warn again for this secret)",
+                                    "[%s] SENSITIVE DATA DETECTED on %s: type=%s length=%d — redacting and forwarding (will not warn again for this value)",
                                     timestamp,
                                     request_path,
-                                    stype_name,
-                                    secret_len,
+                                    token_type,
+                                    matched_len,
                                 )
 
                 # --- Pass 2: Injection — scan ONLY role=user content ---
@@ -640,15 +660,15 @@ def create_proxy_app(
                             )
 
                 # Sanitise the full body in a single pass if any secret was found
-                if _contains_secrets:
-                    sanitized_body, n_redacted = _sanitize_body_secrets(body)
+                if _body_needs_redaction:
+                    sanitized_body, redaction_count = _sanitize_body_secrets(body)
                     raw_body = json.dumps(sanitized_body, ensure_ascii=False).encode("utf-8")
                     body = sanitized_body
                     logger.info(
-                        "[%s] BODY SANITISED on %s: %d secret(s) replaced with descriptive placeholder — request forwarded to LLM",
+                        "[%s] BODY SANITISED on %s: %d value(s) replaced with descriptive placeholder — request forwarded to LLM",
                         timestamp,
                         request_path,
-                        n_redacted,
+                        redaction_count,
                     )
 
                 logger.info(
@@ -901,7 +921,10 @@ def create_proxy_app(
         # X-Target-URL is disabled for security (SSRF / exfiltration risk).
         forward_url = target_url
         query_params = str(request.url.query)
-        forward_path = f"/v1/{path}?{query_params}" if query_params else f"/v1/{path}"
+        # Normalize to prevent path-traversal / partial-SSRF (CWE-918).
+        forward_path = _normalize_path(f"/v1/{path}")
+        if query_params:
+            forward_path = f"{forward_path}?{query_params}"
         async with httpx.AsyncClient() as client:
             forward_headers = dict(request.headers)
             forward_headers.pop("host", None)
@@ -949,7 +972,10 @@ def create_proxy_app(
         # X-Target-URL is disabled for security (SSRF / exfiltration risk).
         forward_url = target_url
         query_params = str(request.url.query)
-        forward_path = f"/{path}?{query_params}" if query_params else f"/{path}"
+        # Normalize to prevent path-traversal / partial-SSRF (CWE-918).
+        forward_path = _normalize_path(f"/{path}")
+        if query_params:
+            forward_path = f"{forward_path}?{query_params}"
         async with httpx.AsyncClient() as client:
             forward_headers = dict(request.headers)
             forward_headers.pop("host", None)

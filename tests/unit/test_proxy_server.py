@@ -11,8 +11,46 @@ from src.proxy.server import (
     _extract_text_from_content,
     _extract_text_from_response,
     _extract_user_messages_from_body,
+    _normalize_path,
     create_proxy_app,
 )
+
+# ── Tests for _normalize_path ────────────────────────────────────────────────────
+
+
+class TestNormalizePath:
+    """Path normalization must prevent path-traversal / partial-SSRF."""
+
+    def test_normal_path_unchanged(self):
+        assert _normalize_path("/v1/chat/completions") == "/v1/chat/completions"
+
+    def test_leading_slash_added(self):
+        assert _normalize_path("v1/models").startswith("/")
+
+    def test_dot_dot_collapsed(self):
+        """../../ traversal must be collapsed, never forwarded verbatim."""
+        assert _normalize_path("/v1/../../etc/passwd") == "/etc/passwd"
+
+    def test_dot_dot_cannot_escape_root(self):
+        """Traversal beyond root stays at root."""
+        assert _normalize_path("/../../../etc/passwd") == "/etc/passwd"
+
+    def test_multiple_slashes_collapsed(self):
+        assert _normalize_path("//v1//models") == "/v1/models"
+
+    def test_single_dot_removed(self):
+        assert _normalize_path("/v1/./models") == "/v1/models"
+
+    def test_empty_path_returns_slash(self):
+        assert _normalize_path("") == "/"
+
+    def test_root_path(self):
+        assert _normalize_path("/") == "/"
+
+    def test_gemini_path_unchanged(self):
+        path = "/v1beta/models/gemini-1.5-flash:generateContent"
+        assert _normalize_path(path) == path
+
 
 # ── Tests for _extract_text_from_content ────────────────────────────────
 

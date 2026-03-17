@@ -45,6 +45,7 @@ def check_ollama_installation() -> dict[str, bool | list[str]]:
                 lines = result.stdout.strip().split("\n")[1:]
                 models = [line.split()[0] for line in lines if line.strip()]
         except (subprocess.TimeoutExpired, FileNotFoundError):
+            # Ollama is not installed or not responding — return defaults silently.
             pass
 
     return {"installed": installed, "running": running, "models": models}
