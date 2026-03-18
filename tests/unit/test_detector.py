@@ -111,7 +111,7 @@ class TestSecretDetector:
 
     def test_high_entropy_detection(self, detector):
         """Test: Detect strings with high entropy (possible unknown secrets)"""
-        high_entropy_string = "a8f5f167f44f4964e6c998dee827110c"
+        high_entropy_string = "a8f5f167f44f4964e6c998dee827110c"  # pragma: allowlist secret
         text = f"API key: {high_entropy_string}"
         results = detector.scan(text)
 
@@ -153,9 +153,9 @@ class TestIntegration:
         """Test: Realistic scenario with multiple secret types"""
         text = """
         # Production Configuration
-        AWS_ACCESS_KEY = AKIAIOSFODNN7EXAMPLE
-        AWS_SECRET = wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
-        GITHUB_TOKEN = ghp_1234567890abcdefghijklmnopqrstuvwxyzABCD
+        AWS_ACCESS_KEY = AKIAIOSFODNN7EXAMPLE  # pragma: allowlist secret
+        AWS_SECRET = wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY  # pragma: allowlist secret
+        GITHUB_TOKEN = ghp_1234567890abcdefghijklmnopqrstuvwxyzABCD  # pragma: allowlist secret
         DB_PASSWORD = supersecurepassword123
         """
 

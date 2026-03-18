@@ -60,7 +60,7 @@ def validate_aws_key(key: str) -> bool:
         would require calling the AWS API.
 
     Example:
-        >>> validate_aws_key("AKIAIOSFODNN7EXAMPLE")
+        >>> validate_aws_key("AKIAIOSFODNN7EXAMPLE")  # pragma: allowlist secret
         True
         >>> validate_aws_key("AKIA123")
         False
@@ -96,7 +96,7 @@ def validate_github_token(token: str) -> bool:
         True if the format is valid
 
     Example:
-        >>> validate_github_token("ghp_1234567890abcdefghijklmnopqrstuvwxyz")
+        >>> validate_github_token("ghp_<your-token>")
         True
         >>> validate_github_token("invalid_token")
         False

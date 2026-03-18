@@ -16,19 +16,19 @@ def detector():
 @pytest.fixture
 def sample_aws_key():
     """Sample AWS Access Key (valid format, not real)"""
-    return "AKIAIOSFODNN7EXAMPLE"
+    return "AKIAIOSFODNN7EXAMPLE"  # pragma: allowlist secret
 
 
 @pytest.fixture
 def sample_aws_secret():
     """Sample AWS Secret Key"""
-    return "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
+    return "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"  # pragma: allowlist secret
 
 
 @pytest.fixture
 def sample_github_token():
     """Sample GitHub token"""
-    return "ghp_1234567890abcdefghijklmnopqrstuvwxyzABCD"
+    return "ghp_1234567890abcdefghijklmnopqrstuvwxyzABCD"  # pragma: allowlist secret
 
 
 @pytest.fixture
@@ -46,7 +46,7 @@ def sample_credit_card():
 @pytest.fixture
 def sample_jwt():
     """Sample JWT token"""
-    return "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U"
+    return "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U"  # pragma: allowlist secret
 
 
 @pytest.fixture

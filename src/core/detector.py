@@ -113,7 +113,7 @@ class SecretDetector:
 
         Example:
             >>> detector = SecretDetector()
-            >>> results = detector.scan("Token: ghp_1234567890abcdefghij")
+            >>> results = detector.scan("Token: ghp_<your-token>")
             >>> len(results)
             1
             >>> results[0].secret_type
@@ -344,7 +344,7 @@ class SecretDetector:
 
         Example:
             >>> detector = SecretDetector()
-            >>> detector.quick_check("My key is AKIAIOSFODNN7EXAMPLE")
+            >>> detector.quick_check("My key is AKIAIOSFODNN7EXAMPLE")  # pragma: allowlist secret
             True
         """
         return len(self.scan(text)) > 0

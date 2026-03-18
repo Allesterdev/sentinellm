@@ -790,9 +790,8 @@ def _ensure_api_keys_configured(
         # These prints show setup instructions to the user — not a credential leak.
         # lgtm[py/clear-text-logging-sensitive-data]
         print(f"\n  ⚠️  Variable de entorno {env_var} no encontrada.")
-        print(  # lgtm[py/clear-text-logging-sensitive-data]
-            f"     OpenClaw necesita esta clave para conectar con {preset_name}."
-        )
+        # lgtm[py/clear-text-logging-sensitive-data]
+        print(f"     OpenClaw necesita esta clave para conectar con {preset_name}.")
 
         if questionary is None:
             # lgtm[py/clear-text-logging-sensitive-data]
@@ -806,9 +805,8 @@ def _ensure_api_keys_configured(
         ).ask()
 
         if not api_key or not api_key.strip():
-            print(  # lgtm[py/clear-text-logging-sensitive-data]
-                f"     ⏭️  Omitido. Recuerda establecer {env_var} antes de usar OpenClaw."
-            )
+            # lgtm[py/clear-text-logging-sensitive-data]
+            print(f"     ⏭️  Omitido. Recuerda establecer {env_var} antes de usar OpenClaw.")
             result[pid] = None
             continue
 

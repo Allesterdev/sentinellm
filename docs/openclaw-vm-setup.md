@@ -36,7 +36,7 @@ nano ~/.config/openclaw/config.json
   "providers": {
     "openai": {
       "apiUrl": "https://api.openai.com",
-      "apiKey": "YOUR_OPENAI_API_KEY"
+      "apiKey": "YOUR_OPENAI_API_KEY" <!-- pragma: allowlist secret -->
     }
   }
 }
@@ -51,7 +51,7 @@ nano ~/.config/openclaw/config.json
   "providers": {
     "openai": {
       "apiUrl": "http://127.0.0.1:8080",
-      "apiKey": "YOUR_OPENAI_API_KEY"
+      "apiKey": "YOUR_OPENAI_API_KEY" <!-- pragma: allowlist secret -->
     }
   }
 }
@@ -78,7 +78,7 @@ openclaw
 3. **Test with a message containing a secret:**
 
 ```
-Hello, my API key is sk-proj-45lP0XfR89dVtZ2kL1mV3nQo6jS7bA9cE0hOcSI34wK
+Hello, my API key is sk-proj-1234567890abcdefghijklmnopqrstuvwxyz
 ```
 
 **Expected result:** The proxy should show a log blocking the message and OpenClaw should receive a 403 error.
