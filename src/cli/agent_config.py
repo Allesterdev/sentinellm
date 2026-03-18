@@ -788,15 +788,11 @@ def _ensure_api_keys_configured(
         # env_var is the NAME of an env var (e.g. "OPENAI_API_KEY"), not its
         # value. CodeQL flags it as sensitive because the name implies a key.
         # These prints show setup instructions to the user — not a credential leak.
-        # fmt: off
-        print(f"\n  ⚠️  Variable de entorno {env_var} no encontrada.")  # lgtm[py/clear-text-logging-sensitive-data]
-        print(f"     OpenClaw necesita esta clave para conectar con {preset_name}.")  # lgtm[py/clear-text-logging-sensitive-data]
-        # fmt: on
+        print(f"\n  ⚠️  Variable de entorno {env_var} no encontrada.")
+        print(f"     OpenClaw necesita esta clave para conectar con {preset_name}.")
 
         if questionary is None:
-            # fmt: off
-            print(f"     Por favor establece: export {env_var}=tu-clave")  # lgtm[py/clear-text-logging-sensitive-data]
-            # fmt: on
+            print(f"     Por favor establece: export {env_var}=tu-clave")
             result[pid] = None
             continue
 
@@ -806,9 +802,7 @@ def _ensure_api_keys_configured(
         ).ask()
 
         if not api_key or not api_key.strip():
-            # fmt: off
-            print(f"     ⏭️  Omitido. Recuerda establecer {env_var} antes de usar OpenClaw.")  # lgtm[py/clear-text-logging-sensitive-data]
-            # fmt: on
+            print(f"     ⏭️  Omitido. Recuerda establecer {env_var} antes de usar OpenClaw.")
             result[pid] = None
             continue
 
@@ -824,11 +818,9 @@ def _ensure_api_keys_configured(
             # The file is user-owned (~/.sentinellm.env) and not committed
             # to version control.  Encrypting here would be pointless
             # because the consumer (the proxy) must read the plain value.
-            # fmt: off
-            with open(env_path, "a", encoding="utf-8") as f:  # lgtm[py/clear-text-storage-of-sensitive-data]
-                f.write(f"\n# {preset_name} API key (added by sllm agent)\n")  # lgtm[py/clear-text-storage-of-sensitive-data]
-                f.write(f"{env_var}={api_key}\n")  # lgtm[py/clear-text-storage-of-sensitive-data]
-            # fmt: on
+            with open(env_path, "a", encoding="utf-8") as f:
+                f.write(f"\n# {preset_name} API key (added by sllm agent)\n")
+                f.write(f"{env_var}={api_key}\n")
             print(f"     ✅ Guardada en {env_path}")
         except OSError:
             # Writing to ~/.sentinellm.env is best-effort; if it fails (e.g.

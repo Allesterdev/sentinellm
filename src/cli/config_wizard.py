@@ -356,9 +356,7 @@ def run_config_wizard() -> dict[str, Any]:
             print(f"  {t('deployment_mode_label')} {config['ollama'].get('mode', 'local')}")
     # config may be tainted in CodeQL's analysis because it stores api_key_env
     # (the Ollama API key env var name), but this field only accesses a boolean.
-    # fmt: off
-    print(f"✓ {t('secrets_status')} {config['secret_detection']['enabled']}")  # lgtm[py/clear-text-logging-sensitive-data]
-    # fmt: on
+    print(f"✓ {t('secrets_status')} {config['secret_detection']['enabled']}")
 
     print(f"\n{t('ready')}")
     print("   python examples/interactive_demo.py")
