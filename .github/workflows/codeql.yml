@@ -67,7 +67,7 @@ jobs:
               - exclude:
                   id: py/clear-text-logging-sensitive-data
               - exclude:
-                  id: py/clear-text-storage-of-sensitive-data
+                  id: py/clear-text-storage-sensitive-data
 
             # Custom paths to scan
             paths:
