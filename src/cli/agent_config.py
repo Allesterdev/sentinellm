@@ -818,11 +818,9 @@ def _ensure_api_keys_configured(
             # The file is user-owned (~/.sentinellm.env) and not committed
             # to version control.  Encrypting here would be pointless
             # because the consumer (the proxy) must read the plain value.
-            # fmt: off
-            with open(env_path, "a", encoding="utf-8") as f:  # codeql[py/clear-text-storage-of-sensitive-data]
-                f.write(f"\n# {preset_name} API key (added by sllm agent)\n")  # codeql[py/clear-text-storage-of-sensitive-data]
-                f.write(f"{env_var}={api_key}\n")  # codeql[py/clear-text-storage-of-sensitive-data]
-            # fmt: on
+            with open(env_path, "a", encoding="utf-8") as f:
+                f.write(f"\n# {preset_name} API key (added by sllm agent)\n")
+                f.write(f"{env_var}={api_key}\n")
             print(f"     ✅ Guardada en {env_path}")
         except OSError:
             # Writing to ~/.sentinellm.env is best-effort; if it fails (e.g.

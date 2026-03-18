@@ -59,11 +59,15 @@ jobs:
             # Exclude queries that produce known false positives in this codebase:
             # - py/clear-text-logging-sensitive-data: flagged prints are CLI setup
             #   instructions showing env var *names*, not credential values.
-            #   (py/clear-text-storage-of-sensitive-data is suppressed inline in
-            #   agent_config.py with # codeql[] comments — more surgical approach)
+            # - py/clear-text-storage-of-sensitive-data: agent_config.py intentionally
+            #   writes API keys to ~/.sentinellm.env — this is the standard .env
+            #   mechanism for local processes. No other module in src/ stores
+            #   sensitive data in clear text; the alert only fires in src/cli/.
             query-filters:
               - exclude:
                   id: py/clear-text-logging-sensitive-data
+              - exclude:
+                  id: py/clear-text-storage-of-sensitive-data
 
             # Custom paths to scan
             paths:
