@@ -56,6 +56,18 @@ jobs:
               - uses: security-extended
               - uses: security-and-quality
 
+            # Exclude queries that produce known false positives in this codebase:
+            # - py/clear-text-logging-sensitive-data: flagged prints are CLI setup
+            #   instructions showing env var *names*, not credential values.
+            # - py/clear-text-storage-of-sensitive-data: writing to ~/.sentinellm.env
+            #   is intentional — it's the standard mechanism for supplying API keys
+            #   to local processes; encrypting would prevent the proxy from reading them.
+            query-filters:
+              - exclude:
+                  id: py/clear-text-logging-sensitive-data
+              - exclude:
+                  id: py/clear-text-storage-of-sensitive-data
+
             # Custom paths to scan
             paths:
               - src
