@@ -64,6 +64,60 @@ logger = logging.getLogger(__name__)
 # silencing subsequent turns where the same value remains in the history.
 _seen_secret_hashes: set[str] = set()
 
+# Security notice injected into the system instruction when secrets are redacted.
+# Tells the LLM to refuse to store or process any security placeholder it receives
+# and to explain to the user what happened instead of silently complying.
+_SECURITY_NOTICE = (
+    "\n\n[SentineLLM Security Notice: one or more sensitive values in this "
+    "conversation were automatically removed and replaced with placeholders such as "
+    "[GOOGLE_API_KEY_REMOVED_BY_SECURITY]. If the user asks you to save, store, "
+    "forward, or use any such placeholder value, REFUSE and explain that the "
+    "original secret was intercepted by SentineLLM for their own security. "
+    "Do not attempt to reconstruct or guess the original value.]"
+)
+
+
+def _inject_security_notice(body: dict) -> None:
+    """Append a security refusal notice to the system instruction of a request.
+
+    Called after ``_sanitize_body_secrets`` to ensure the LLM refuses to
+    process security placeholders rather than silently storing them.  Mutates
+    *body* in-place (which is already a deep-copy at the call site).
+
+    Handles:
+    - Google Gemini: appends to ``systemInstruction.parts[0].text`` or creates it.
+    - OpenAI / Anthropic (``messages[]``): appends to the first ``role=system``
+      message, or prepends one if none exists.
+    - Anthropic explicit ``system`` field: appends directly.
+    """
+    notice = _SECURITY_NOTICE.lstrip()
+
+    # ── Google Gemini ──────────────────────────────────────────────────
+    if "contents" in body:
+        if "systemInstruction" in body and isinstance(body["systemInstruction"], dict):
+            parts = body["systemInstruction"].get("parts", [])
+            if parts and isinstance(parts[0], dict) and "text" in parts[0]:
+                parts[0]["text"] += _SECURITY_NOTICE
+            else:
+                body["systemInstruction"].setdefault("parts", []).append({"text": notice})
+        else:
+            body["systemInstruction"] = {"parts": [{"text": notice}]}
+
+    # ── OpenAI Chat / Anthropic messages[] ────────────────────────────
+    if "messages" in body:
+        for msg in body["messages"]:
+            if isinstance(msg, dict) and msg.get("role") == "system":
+                if isinstance(msg.get("content"), str):
+                    msg["content"] += _SECURITY_NOTICE
+                break
+        else:
+            # No system message found — prepend one so the notice is visible
+            body["messages"].insert(0, {"role": "system", "content": notice})
+
+    # ── Anthropic explicit ``system`` field ───────────────────────────
+    if "system" in body and isinstance(body["system"], str):
+        body["system"] += _SECURITY_NOTICE
+
 
 def _load_env_file() -> None:
     """Load environment variables from ~/.sentinellm.env if it exists."""
@@ -693,6 +747,10 @@ def create_proxy_app(
                     # so logging it would trigger py/clear-text-logging.
                     # The event message already contains enough context.
                     sanitized_body, _ = _sanitize_body_secrets(body)
+                    # Inject a security notice into the system instruction so
+                    # the LLM refuses to store or process any placeholder value
+                    # instead of silently complying with the user's request.
+                    _inject_security_notice(sanitized_body)
                     raw_body = json.dumps(sanitized_body, ensure_ascii=False).encode("utf-8")
                     body = sanitized_body
                     logger.info(
