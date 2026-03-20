@@ -35,8 +35,8 @@ from ..utils.constants import SECRET_PATTERNS, SecretType
 
 # Descriptive placeholders per secret type — meaningful for both humans and
 # the LLM that will receive the sanitised message.  The text is intentionally
-# verbose so the model understands *why* a value is missing and does not try
-# to hallucinate or reconstruct the original secret.
+# terse so the model clearly recognises it as a redacted system marker rather
+# than conversational text it should try to process.
 _SECRET_PLACEHOLDERS: dict[SecretType, str] = {
     SecretType.AWS_ACCESS_KEY: "[AWS_ACCESS_KEY_REMOVED_BY_SECURITY]",
     SecretType.AWS_SECRET_KEY: "[AWS_SECRET_KEY_REMOVED_BY_SECURITY]",
@@ -65,8 +65,8 @@ logger = logging.getLogger(__name__)
 _seen_secret_hashes: set[str] = set()
 
 # Security notice injected into the system instruction when secrets are redacted.
-# Tells the LLM to refuse to store or process any security placeholder it receives
-# and to explain to the user what happened instead of silently complying.
+# Reinforces the per-placeholder directives: even if the model misses the inline
+# marker it will see this global notice in the system instruction.
 _SECURITY_NOTICE = (
     "\n\n[SentineLLM Security Notice: one or more sensitive values in this "
     "conversation were automatically removed and replaced with placeholders such as "
@@ -74,6 +74,16 @@ _SECURITY_NOTICE = (
     "forward, or use any such placeholder value, REFUSE and explain that the "
     "original secret was intercepted by SentineLLM for their own security. "
     "Do not attempt to reconstruct or guess the original value.]"
+)
+
+# User-visible security notice prepended to the LLM response when new secrets
+# are detected.  This is injected directly into the streaming/non-streaming
+# response so the user sees it in the chat UI regardless of what the LLM says.
+_SECURITY_NOTICE_USER = (
+    "\u26a0\ufe0f **SentineLLM Security Notice**: A secret (API key / token) "
+    "was detected in your message and **automatically redacted** before "
+    "being sent to the AI model. The original value was NOT exposed to "
+    "the provider.\n\n---\n\n"
 )
 
 
@@ -117,6 +127,72 @@ def _inject_security_notice(body: dict) -> None:
     # ── Anthropic explicit ``system`` field ───────────────────────────
     if "system" in body and isinstance(body["system"], str):
         body["system"] += _SECURITY_NOTICE
+
+
+def _build_security_notice_sse(forward_url: str) -> bytes:
+    """Build a provider-formatted SSE data line with a user-visible security notice.
+
+    Yields a single SSE event whose text the chat UI will display as the first
+    chunk of the model's response, making secret redaction visible to the end
+    user without depending on the LLM's willingness to report it.
+    """
+    hostname = urlparse(forward_url).hostname or ""
+    notice = _SECURITY_NOTICE_USER
+
+    if hostname == "generativelanguage.googleapis.com":
+        # Google Gemini streaming format
+        payload: dict = {
+            "candidates": [
+                {
+                    "content": {
+                        "parts": [{"text": notice}],
+                        "role": "model",
+                    }
+                }
+            ]
+        }
+    else:
+        # OpenAI / Ollama / compatible format
+        payload = {
+            "id": "sentinellm-security-notice",
+            "object": "chat.completion.chunk",
+            "choices": [
+                {
+                    "index": 0,
+                    "delta": {"role": "assistant", "content": notice},
+                }
+            ],
+        }
+
+    return f"data: {json.dumps(payload, ensure_ascii=False)}\r\n\r\n".encode()
+
+
+def _inject_notice_into_response(content: bytes, forward_url: str) -> bytes:
+    """Prepend a user-visible security notice to a non-streaming LLM response."""
+    try:
+        data = json.loads(content)
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return content
+
+    notice = _SECURITY_NOTICE_USER
+    hostname = urlparse(forward_url).hostname or ""
+
+    if hostname == "generativelanguage.googleapis.com":
+        # Gemini: candidates[0].content.parts[0].text
+        candidates = data.get("candidates", [])
+        if candidates:
+            parts = candidates[0].get("content", {}).get("parts", [])
+            if parts and isinstance(parts[0], dict) and "text" in parts[0]:
+                parts[0]["text"] = notice + parts[0]["text"]
+    else:
+        # OpenAI / compatible: choices[0].message.content
+        choices = data.get("choices", [])
+        if choices:
+            msg = choices[0].get("message", {})
+            if "content" in msg and isinstance(msg["content"], str):
+                msg["content"] = notice + msg["content"]
+
+    return json.dumps(data, ensure_ascii=False).encode("utf-8")
 
 
 def _load_env_file() -> None:
@@ -614,6 +690,7 @@ def create_proxy_app(
         )
         query_params = str(request.url.query)
         timestamp = datetime.now(timezone.utc).isoformat()
+        _notify_user_of_redaction = False
 
         try:
             # === BODY SIZE GUARD (DoS prevention) ===
@@ -668,6 +745,7 @@ def create_proxy_app(
 
                 # --- Pass 1: Secrets — scan ALL content (history + system prompt) ---
                 _body_needs_redaction = False
+                _notify_user_of_redaction = False
                 for content in all_messages:
                     if not content or not content.strip():
                         continue
@@ -685,6 +763,7 @@ def create_proxy_app(
                                     _seen_secret_hashes.add(h)
                                     new_hashes.append((stype.name, len(m.group(0))))
                         if new_hashes:
+                            _notify_user_of_redaction = True
                             for token_type, matched_len in new_hashes:
                                 logger.warning(
                                     "[%s] SENSITIVE DATA DETECTED on %s: type=%s length=%d — redacting and forwarding (will not warn again for this value)",
@@ -753,7 +832,7 @@ def create_proxy_app(
                     _inject_security_notice(sanitized_body)
                     raw_body = json.dumps(sanitized_body, ensure_ascii=False).encode("utf-8")
                     body = sanitized_body
-                    logger.info(
+                    logger.warning(
                         "[%s] BODY SANITISED on %s — sensitive values replaced with placeholders, request forwarded to LLM",
                         timestamp,
                         request_path,
@@ -861,6 +940,8 @@ def create_proxy_app(
                 # Stream chunks directly to client
                 async def stream_chunks():
                     try:
+                        if _notify_user_of_redaction:
+                            yield _build_security_notice_sse(forward_url)
                         async for chunk in resp.aiter_raw():
                             yield chunk
                     except (
@@ -958,8 +1039,12 @@ def create_proxy_app(
                     if k.lower() not in hop_by_hop:
                         response_headers[k] = v
 
+                resp_content = response.content
+                if _notify_user_of_redaction and response.status_code == 200:
+                    resp_content = _inject_notice_into_response(resp_content, forward_url)
+
                 return Response(
-                    content=response.content,
+                    content=resp_content,
                     status_code=response.status_code,
                     headers=response_headers,
                     media_type=response.headers.get("content-type"),
